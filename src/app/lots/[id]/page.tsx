@@ -5,11 +5,11 @@ import api from '@/lib/api';
 import { Lot } from '@/types';
 import {
     Calendar, MapPin, Tag, Fuel, Settings, Gauge,
-    ArrowLeft, Share2, Heart, ExternalLink, Hash,
+    ArrowLeft, Share2, Heart, ExternalLink, Hash, Eye,
     ChevronLeft, ChevronRight, X, Maximize2, Loader2, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
-import LotCard from '@/components/LotCard';
+import GridCard from '@/components/search/GridCard';
 
 interface AuctionData {
     title: string;
@@ -33,42 +33,83 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                 const response = await api.get(`/lots/${id}`);
                 const lotData = response.data.data;
                 setLot(lotData);
+                setLoading(false); // Stop main loading as soon as we have the lot
 
-                // Parallel fetch for auction, price reference, and recommendations
-                const [auctionRes, priceRes, recRes] = await Promise.all([
-                    lotData.externalAuctionId ? api.get(`/auctions/${lotData.externalAuctionId}`) : null,
-                    lotData.externalLotId ? api.get(`/lots/${lotData.externalLotId}/price-reference`) : null,
-                    api.get('/lots', { params: { limit: 8, sort: '-createdAt' } })
-                ]);
+                // Registrar visita assim que o lote é carregado
+                api.post(`/lots/${id}/visit`).catch(e => console.error("Visit recording failed", e));
 
-                if (auctionRes && auctionRes.data.success) {
-                    setAuction(auctionRes.data.data);
-                }
-                if (priceRes && priceRes.data.success) {
-                    setPriceRef(priceRes.data.data);
-                }
-                if (recRes && recRes.data.success) {
-                    // Filter out current lot from recommendations
-                    setRecommendedLots(recRes.data.data.lots.filter((l: Lot) => l.externalLotId !== id));
-                }
+                // Secondary fetches - separate to avoid blocking main content
+                const fetchExtras = async () => {
+                    // Auction
+                    if (lotData.externalAuctionId) {
+                        api.get(`/auctions/${lotData.externalAuctionId}`)
+                            .then(res => res.data.success && setAuction(res.data.data))
+                            .catch(e => console.error("Auction fetch failed", e));
+                    }
+                    // Price Ref
+                    if (lotData.externalLotId) {
+                        api.get(`/lots/${lotData.externalLotId}/price-reference`)
+                            .then(res => res.data.success && setPriceRef(res.data.data))
+                            .catch(e => console.error("Price ref fetch failed", e));
+                    }
+                    // Recommendations
+                    try {
+                        const recRes = await api.get('/lots', {
+                            params: {
+                                limit: 20,
+                                sort: 'relevant',
+                                ...(lotData.marca ? { marca: lotData.marca } : {})
+                            }
+                        });
+
+                        if (recRes && recRes.data.success) {
+                            let filtered = recRes.data.data.lots.filter((l: Lot) => {
+                                const isCurrent = String(l.externalLotId) === id || l._id === id;
+                                return !isCurrent;
+                            });
+
+                            // Fallback if not enough brand lots: fetch general ones
+                            if (filtered.length < 4) {
+                                const fallbackRes = await api.get('/lots', { params: { limit: 20, sort: 'relevant' } });
+                                if (fallbackRes.data.success) {
+                                    const secondFilter = fallbackRes.data.data.lots.filter((l: Lot) => {
+                                        const isCurrent = String(l.externalLotId) === id || l._id === id;
+                                        const alreadyIn = filtered.some((m: Lot) => m._id === l._id);
+                                        return !isCurrent && !alreadyIn;
+                                    });
+                                    filtered = [...filtered, ...secondFilter];
+                                }
+                            }
+                            setRecommendedLots(filtered.slice(0, 10));
+                        }
+                    } catch (e) {
+                        console.error("Recommendations fetch failed", e);
+                    }
+                };
+                fetchExtras();
+
             } catch (error) {
                 console.error('Error fetching lot details:', error);
-            } finally {
                 setLoading(false);
             }
         };
         fetchData();
+    }, [id]);
 
-        // Keyboard navigation for gallery
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!isGalleryOpen) return;
-            if (e.key === 'ArrowRight') nextImage();
-            if (e.key === 'ArrowLeft') prevImage();
+
+            const ims = lot ? ((lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || [])) : [];
+            if (!ims.length) return;
+
+            if (e.key === 'ArrowRight') setCurrentImageIndex((prev) => (prev + 1) % ims.length);
+            if (e.key === 'ArrowLeft') setCurrentImageIndex((prev) => (prev - 1 + ims.length) % ims.length);
             if (e.key === 'Escape') setIsGalleryOpen(false);
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [id, isGalleryOpen, currentImageIndex]);
+    }, [isGalleryOpen, lot]);
 
     if (loading) {
         return (
@@ -95,10 +136,12 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
     const displayImages = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
 
     const nextImage = () => {
+        if (!displayImages.length) return;
         setCurrentImageIndex((prev) => (prev + 1) % displayImages.length);
     };
 
     const prevImage = () => {
+        if (!displayImages.length) return;
         setCurrentImageIndex((prev) => (prev - 1 + displayImages.length) % displayImages.length);
     };
 
@@ -181,24 +224,6 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                 </div>
             )}
 
-            {/* Header / Breadcrumb - Clean & Simple */}
-            <div className="bg-white border-b border-gray-100 flex items-center justify-center">
-                <div className="max-w-[1240px] w-full px-4 py-4 flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2 text-[11px] font-bold text-gray-400 hover:text-gray-900 transition-all uppercase tracking-widest">
-                        <ArrowLeft className="h-4 w-4" />
-                        Voltar para a busca
-                    </Link>
-                    <div className="flex items-center gap-4">
-                        <button className="text-gray-300 hover:text-emerald-600 transition-colors">
-                            <Share2 className="h-5 w-5" />
-                        </button>
-                        <button className="text-gray-300 hover:text-emerald-600 transition-colors">
-                            <Heart className="h-5 w-5" />
-                        </button>
-                    </div>
-                </div>
-            </div>
-
             {/* Hero Section: Gallery - Webmotors Style */}
             <div className="bg-[#f0f2f5] relative group cursor-zoom-in" onClick={() => setIsGalleryOpen(true)}>
                 <div className="w-full relative flex items-center justify-center overflow-hidden">
@@ -263,8 +288,38 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                 </div>
             </div>
 
+            {/* Navigation & Actions Bar - Positioned below Carousel as requested */}
+            <div className="bg-white border-b border-gray-100 mb-6">
+                <div className="max-w-[1240px] mx-auto px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <Link href="/search" className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-gray-400 hover:text-emerald-600 transition-all uppercase tracking-[0.2em] group">
+                            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
+                            Voltar
+                        </Link>
+                    </div>
+                    <div className="flex items-center gap-6">
+                        {lot && (
+                            <div className="hidden sm:flex items-center gap-2 text-[10px] font-black text-gray-300 uppercase tracking-widest" title="Quantidade de visitas">
+                                <Eye className="h-4 w-4" />
+                                <span>{lot.visitas?.toLocaleString() || '0'} visitas</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-4">
+                            <button className="text-gray-300 hover:text-emerald-600 transition-colors flex items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Compartilhar</span>
+                                <Share2 className="h-5 w-5" />
+                            </button>
+                            <button className="text-gray-300 hover:text-emerald-600 transition-colors flex items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Favoritar</span>
+                                <Heart className="h-5 w-5" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Main Content Area - Overlapping Layout */}
-            <div className="max-w-[1240px] mx-auto px-4 mt-8 relative z-40">
+            <div className="max-w-[1240px] mx-auto px-4 relative z-40">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
                     {/* Left: Vehicle Details Card */}
@@ -273,30 +328,33 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                             {/* Title Section */}
                             <div className="mb-10">
                                 <div className="flex items-center gap-2 mb-4">
-                                    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full border border-emerald-100/30">
+                                    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-1 py-1 rounded-full border border-emerald-100/30">
                                         <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
                                         <span className="text-[9px] font-bold uppercase tracking-[0.1em]">Leilão Ativo</span>
                                     </div>
                                     <span className="text-[9px] font-bold text-gray-300 uppercase tracking-[0.1em]">{lot.sourceName}</span>
                                 </div>
-                                <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 leading-tight tracking-tight">
+                                <h1
+                                    className="text-2xl sm:text-4xl font-bold text-gray-900 leading-tight tracking-tight"
+                                    title={`${lot.marca} ${lot.modelo}`}
+                                >
                                     <span className="font-light mr-3 text-gray-400 uppercase tracking-tighter">{lot.marca}</span>
                                     <span className="text-emerald-600 uppercase font-black">{lot.modelo}</span>
                                 </h1>
-                                <p className="text-gray-400 font-medium text-[11px] mt-2 uppercase tracking-[0.1em]">{lot.versao}</p>
+                                <p className="text-gray-400 font-medium text-[11px] mt-2 uppercase tracking-[0.1em]" title={lot.versao}>{lot.versao}</p>
                             </div>
 
                             {/* Main Specs Grid - Text Focused */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-8 gap-x-4">
-                                <div>
+                                <div title={`Cidade: ${lot.location || 'N/A'}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Cidade</div>
                                     <div className="text-sm font-bold text-gray-900 truncate pr-2">{lot.location || 'N/A'}</div>
                                 </div>
-                                <div>
+                                <div title={`Ano: ${lot.ano}/${lot.anoModelo}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Ano</div>
                                     <div className="text-sm font-bold text-gray-900">{lot.ano}/{lot.anoModelo}</div>
                                 </div>
-                                <div>
+                                <div title={`KM: ${lot.quilometragem?.toLocaleString() || '0'}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">KM</div>
                                     <div className="text-sm font-bold text-gray-900">{lot.quilometragem?.toLocaleString() || '0'}</div>
                                 </div>
@@ -304,15 +362,15 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Câmbio</div>
                                     <div className="text-sm font-bold text-gray-900 uppercase">Não Info.</div>
                                 </div>
-                                <div>
+                                <div title={`Combustível: ${lot.combustivel || 'N/A'}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Combustível</div>
                                     <div className="text-sm font-bold text-gray-900 uppercase">{lot.combustivel || 'N/A'}</div>
                                 </div>
-                                <div>
+                                <div title={`Cor: ${lot.cor || 'N/A'}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Cor</div>
                                     <div className="text-sm font-bold text-gray-900 uppercase">{lot.cor || 'N/A'}</div>
                                 </div>
-                                <div>
+                                <div title={`Carroceria: ${lot.vehicleType || '---'}`}>
                                     <div className="text-[11px] font-medium text-gray-400 uppercase mb-1">Carroceria</div>
                                     <div className="text-sm font-bold text-gray-900 uppercase">{lot.vehicleType || '---'}</div>
                                 </div>
@@ -325,7 +383,7 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
 
                         {/* Description Card */}
                         <div className="bg-white rounded-lg p-6 sm:p-10 border border-gray-100 shadow-sm">
-                            <h2 className="text-[11px] font-bold text-gray-400 mb-6 uppercase tracking-wider">Itens do Lote</h2>
+                            <h2 className="text-[11px] font-bold text-gray-400 mb-6 uppercase tracking-wider">Descrição do lote</h2>
                             <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
                                 {lot.descricao}
                             </p>
@@ -339,7 +397,7 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
                                 <Calendar className="h-10 w-10" />
                             </div>
-                            <div className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider mb-2 opacity-80">Encerramento Leilão</div>
+                            <div className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider mb-2 opacity-80">Encerramento do Leilão</div>
                             <p className="text-sm font-bold uppercase leading-tight">
                                 {formatDate(lot.endAt)}
                             </p>
@@ -377,50 +435,69 @@ export default function LotDetailsPage({ params }: { params: Promise<{ id: strin
                         </div>
 
                         {/* FIPE Comparison Card - Emerald Style */}
-                        {priceRef && (
-                            <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-8">Referência de Mercado</h3>
-                                <div className="flex items-end justify-between mb-5">
-                                    <div>
-                                        <div className="text-sm font-bold text-gray-300 line-through mb-1">R$ {priceRef.priceFipe.toLocaleString('pt-BR')}</div>
-                                        <div className="text-xl font-black text-emerald-600 tracking-tight">Menor que a FIPE</div>
+                        {(() => {
+                            const fipeVal = lot.fipeValor || priceRef?.priceFipe;
+                            const lanceAtualVal = lot.lanceAtual || lot.precoMinimo || 0;
+
+                            if (!fipeVal) {
+                                return (
+                                    <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+                                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Referência de Mercado</h3>
+                                        <div className="text-sm font-bold text-gray-400 uppercase tracking-wider">FIPE indisponível</div>
                                     </div>
-                                    <div className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                        Excelente Oportunidade
+                                );
+                            }
+
+                            const isBelowFipe = lanceAtualVal < fipeVal;
+
+                            return (
+                                <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+                                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-8">Referência de Mercado</h3>
+                                    <div className="flex items-end justify-between mb-5">
+                                        <div>
+                                            <div className="text-sm font-bold text-gray-300 line-through mb-1">R$ {fipeVal.toLocaleString('pt-BR')}</div>
+                                            <div className={`text-xl font-black tracking-tight ${isBelowFipe ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                {isBelowFipe ? 'Menor que a FIPE' : 'Acima da FIPE'}
+                                            </div>
+                                        </div>
+                                        {isBelowFipe && (
+                                            <div className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                                Excelente Oportunidade
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden border border-gray-100 relative">
+                                        <div
+                                            className={`h-full transition-all duration-1000 ${isBelowFipe ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'}`}
+                                            style={{ width: `${calculatePercentage(lanceAtualVal, fipeVal)}%` }}
+                                        />
                                     </div>
                                 </div>
-                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden border border-gray-100 relative">
-                                    <div
-                                        className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                                        style={{ width: `${calculatePercentage(priceRef.priceCurrent, priceRef.priceFipe)}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </div>
 
                 </div>
 
                 {/* Recommended Lots Section */}
                 {recommendedLots.length > 0 && (
-                    <div className="mt-20 pt-10 border-t border-gray-100">
-                        <div className="flex items-center justify-between mb-8">
-                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                <Sparkles className="h-5 w-5 text-emerald-500" />
+                    <div className="mt-16 pt-10 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-emerald-500" />
                                 Recomendados para você
                             </h2>
-                            <Link href="/" className="text-sm font-bold text-emerald-600 hover:underline">
+                            <Link href="/search" className="text-xs font-bold text-emerald-600 hover:underline">
                                 Ver todos
                             </Link>
                         </div>
-                        <div className="relative">
-                            <div className="flex gap-6 overflow-x-auto pb-8 snap-x snap-mandatory scrollbar-hide no-scrollbar">
-                                {recommendedLots.map(recLot => (
-                                    <div key={recLot._id} className="min-w-[280px] w-[280px] snap-start">
-                                        <LotCard lot={recLot} viewMode="grid" />
-                                    </div>
-                                ))}
-                            </div>
+                        {/* Horizontal scroll carousel using the same GridCard as the search page */}
+                        <div className="flex gap-4 overflow-x-auto pb-6 snap-x snap-mandatory no-scrollbar">
+                            {recommendedLots.map(recLot => (
+                                <div key={recLot._id} className="min-w-[240px] w-[240px] snap-start shrink-0">
+                                    <GridCard lot={recLot} />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}

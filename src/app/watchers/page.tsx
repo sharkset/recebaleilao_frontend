@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import api from '@/lib/api';
-import { Bell, CheckCircle, Loader2 } from 'lucide-react';
+import { Bell, CheckCircle, Loader2, Lock } from 'lucide-react';
+import { useSession, signIn } from 'next-auth/react';
 
 export default function WatcherPage() {
+    const { data: session, status } = useSession();
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [formData, setFormData] = useState({
@@ -41,6 +43,34 @@ export default function WatcherPage() {
             setLoading(false);
         }
     };
+
+    if (status === 'loading') {
+        return (
+            <div className="flex h-[50vh] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            </div>
+        );
+    }
+
+    if (!session) {
+        return (
+            <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 mb-6">
+                    <Lock className="h-8 w-8 text-emerald-600" />
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-4">Acesso Restrito</h1>
+                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                    Você precisa estar logado para criar e gerenciar alertas de leilão via WhatsApp.
+                </p>
+                <button
+                    onClick={() => signIn('google')}
+                    className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-500 transition-all"
+                >
+                    Entrar com Google
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="mx-auto max-w-2xl px-4 py-8">

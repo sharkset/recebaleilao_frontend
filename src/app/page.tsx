@@ -1,193 +1,118 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import api from '@/lib/api';
-import LotCard from '@/components/LotCard';
-import FilterSidebar from '@/components/FilterSidebar';
-import { Lot, LotsResponse } from '@/types';
-import { Loader2 } from 'lucide-react';
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { ArrowRight, Bell, CheckCircle, Search, Shield, Zap } from "lucide-react";
 
-export default function Home() {
-  const [lots, setLots] = useState<Lot[]>([]);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    pages: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const itemsPerPage = 20;
-
-  const [filters, setFilters] = useState({
-    marca: '',
-    modelo: '',
-    sourceName: '',
-    location: '',
-    cor: '',
-    anoMin: '',
-    anoMax: '',
-    precoMin: '',
-    precoMax: '',
-    search: '',
-    page: 1,
-    limit: itemsPerPage,
-    sort: '-createdAt'
-  });
-
-  const fetchLots = async (page = filters.page) => {
-    setLoading(true);
-    try {
-      const response = await api.get<LotsResponse>('/lots', {
-        params: { ...filters, page }
-      });
-      setLots(response.data.data.lots);
-      setPagination(response.data.data.pagination);
-    } catch (error) {
-      console.error('Error fetching lots:', error);
-    } finally {
-      setLoading(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  useEffect(() => {
-    fetchLots();
-  }, [filters.page, filters.sort]); // Refetch when page or sort changes
-
-  const handleApplyFilters = () => {
-    setFilters(prev => ({ ...prev, page: 1 }));
-    fetchLots(1);
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setFilters(prev => ({ ...prev, page: newPage }));
-  };
+export default function LandingPage() {
+  const { data: session } = useSession();
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Sidebar */}
-        <FilterSidebar
-          filters={filters}
-          setFilters={setFilters}
-          onApply={handleApplyFilters}
-        />
+    <div className="flex flex-col min-h-screen bg-slate-50">
+      {/* Hero Section */}
+      <section className="relative pt-20 pb-32 overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-50/50 via-transparent to-transparent -z-10" />
 
-        {/* Main Content */}
-        <div className="flex-1">
-          <div className="mb-6 relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="z-10">
-              <h1 className="text-2xl font-bold text-gray-900">
-                Resultados da Busca
-              </h1>
-              <span className="text-sm text-gray-500">
-                {loading ? 'Carregando...' : `${pagination.total} resultados encontrados`}
-              </span>
-            </div>
-
-            {/* Seletor de visualização centralizado */}
-            <div className="sm:absolute sm:left-1/2 sm:-translate-x-1/2 flex items-center gap-2 bg-gray-100 p-1 rounded-lg z-0">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
-                title="Visualização em Grade"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></svg>
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
-                title="Visualização em Lista"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="6" y2="6" /><line x1="3" x2="21" y1="12" y2="12" /><line x1="3" x2="21" y1="18" y2="18" /></svg>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-4 self-end sm:self-auto z-10">
-              <div className="flex flex-col">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Ordenar por</label>
-                <select
-                  value={filters.sort}
-                  onChange={(e) => setFilters(prev => ({ ...prev, sort: e.target.value, page: 1 }))}
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 hover:border-emerald-500 transition-colors cursor-pointer"
-                >
-                  <option value="relevant">Mais Relevantes</option>
-                  <option value="date_desc">Mais Recentes</option>
-                  <option value="price_asc">Menor Preço</option>
-                  <option value="price_desc">Maior Preço</option>
-                </select>
-              </div>
-            </div>
+        <div className="container mx-auto px-4 text-center">
+          <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full text-sm font-semibold mb-8 animate-fade-in">
+            <Zap className="w-4 h-4 fill-emerald-500" />
+            Mais de 15.000 leilões monitorados em tempo real
           </div>
 
-          {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            </div>
-          ) : (
-            <>
-              <div className={viewMode === 'grid'
-                ? "grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                : "flex flex-col gap-4"
-              }>
-                {lots.map((lot) => (
-                  <LotCard key={lot._id} lot={lot} viewMode={viewMode} />
-                ))}
-              </div>
+          <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 mb-6 tracking-tight">
+            Encontre o seu próximo <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
+              veículo de leilão
+            </span>
+          </h1>
 
-              {/* Pagination Controls */}
-              {pagination.pages > 1 && (
-                <div className="mt-12 flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                    className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Anterior
-                  </button>
+          <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed">
+            A plataforma mais completa para encontrar, filtrar e receber alertas dos melhores leilões do Brasil. Economize até 40% na tabela FIPE.
+          </p>
 
-                  <div className="flex items-center gap-1">
-                    {[...Array(Math.min(5, pagination.pages))].map((_, i) => {
-                      let pageNum = pagination.page;
-                      if (pagination.page <= 3) pageNum = i + 1;
-                      else if (pagination.page >= pagination.pages - 2) pageNum = pagination.pages - 4 + i;
-                      else pageNum = pagination.page - 2 + i;
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/search"
+              className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-500 hover:scale-105 transition-all flex items-center gap-2"
+            >
+              Começar a buscar agora
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+            {!session && (
+              <Link
+                href="/login"
+                className="bg-white text-slate-700 px-10 py-4 rounded-2xl font-bold text-lg border border-slate-200 hover:bg-slate-50 transition-all"
+              >
+                Criar conta gratuita
+              </Link>
+            )}
+          </div>
 
-                      if (pageNum <= 0 || pageNum > pagination.pages) return null;
-
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => handlePageChange(pageNum)}
-                          className={`w-10 h-10 rounded-lg text-sm font-bold transition-all ${pagination.page === pageNum ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'hover:bg-gray-50 text-gray-600 border border-gray-100'}`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === pagination.pages}
-                    className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Próxima
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {!loading && lots.length === 0 && (
-            <div className="flex h-64 flex-col items-center justify-center text-center">
-              <p className="text-lg font-medium text-gray-900">Nenhum veículo encontrado</p>
-              <p className="mt-1 text-sm text-gray-500">Tente ajustar seus filtros para encontrar o que procura.</p>
-            </div>
-          )}
+          <div className="mt-16 flex items-center justify-center gap-8 text-slate-400 grayscale opacity-70">
+            {/* Parceiros/Logos fake ou reais futuramente */}
+            <span className="font-bold text-xl tracking-tighter italic">PICELLI</span>
+            <span className="font-bold text-xl tracking-tighter italic">SANTANDER</span>
+            <span className="font-bold text-xl tracking-tighter italic">BRADESCO</span>
+            <span className="font-bold text-xl tracking-tighter italic">SODRE SANTORO</span>
+          </div>
         </div>
+      </section>
+
+      {/* Features Grid */}
+      <section className="py-24 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Por que usar o Receba Leilão?</h2>
+            <p className="text-slate-500 max-w-xl mx-auto">Tudo o que você precisa para tomar a melhor decisão de compra em um só lugar.</p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <FeatureCard
+              icon={<Search className="w-7 h-7" />}
+              title="Filtros Inteligentes"
+              description="Filtre por marca, modelo, ano, estado e até mesmo pelo valor estimado da tabela FIPE."
+            />
+            <FeatureCard
+              icon={<Bell className="w-7 h-7" />}
+              title="Alertas via WhatsApp"
+              description="Receba avisos instantâneos sempre que um veículo que você procura entrar em leilão."
+            />
+            <FeatureCard
+              icon={<Shield className="w-7 h-7" />}
+              title="Dados Consolidados"
+              description="Acessamos centenas de leiloeiros oficiais para garantir que você não perca nenhuma oportunidade."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-emerald-900 text-white overflow-hidden relative">
+        <div className="container mx-auto px-4 relative z-10 text-center">
+          <h2 className="text-4xl font-bold mb-6">Pronto para encontrar sua próxima oportunidade?</h2>
+          <p className="text-emerald-100 mb-10 text-lg max-w-xl mx-auto">Junte-se a milhares de compradores que já estão economizando com nossa plataforma.</p>
+          <Link
+            href="/search"
+            className="inline-block bg-white text-emerald-900 px-12 py-4 rounded-2xl font-bold text-xl shadow-2xl hover:bg-emerald-50 transition-all hover:scale-105"
+          >
+            Ver Leilões Agora
+          </Link>
+        </div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-800 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-800 rounded-full -ml-32 -mb-32 blur-3xl opacity-50" />
+      </section>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+  return (
+    <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-500/5 transition-all group">
+      <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+        {icon}
       </div>
+      <h3 className="text-xl font-bold text-slate-900 mb-3">{title}</h3>
+      <p className="text-slate-500 leading-relaxed">{description}</p>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 export interface Lot {
     _id: string;
-    externalLotId?: string;
+    externalLotId?: string | number;
     sourceName?: string;
-    auctionId?: string;
+    auctionId?: string | number;
     ano?: number;
     anoModelo?: number;
     cor?: string;
@@ -22,6 +22,9 @@ export interface Lot {
     versao?: string;
     createdAt?: string;
     endAt?: string;
+    fipeValor?: number;
+    lanceAtual?: number;
+    visitas?: number;
     statusRaw?: string;
     raw?: {
         images?: string[];

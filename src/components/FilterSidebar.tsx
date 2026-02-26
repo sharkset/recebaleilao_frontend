@@ -1,5 +1,7 @@
+"use client";
+
 import { useState, useEffect } from 'react';
-import { Search, RotateCcw, Filter } from 'lucide-react';
+import { Search, RotateCcw, Filter, Sparkles } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import api from '@/lib/api';
 
@@ -32,7 +34,6 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
         cores: true
     });
 
-    // 1. Fetch Marcas, Cores, Localidades e Leiloeiros iniciais
     useEffect(() => {
         async function fetchInitialValues() {
             setLoading(prev => ({ ...prev, marcas: true, cores: true, localidades: true, leiloeiros: true }));
@@ -56,7 +57,6 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
         fetchInitialValues();
     }, []);
 
-    // 2. Fetch Modelos quando Marca muda
     useEffect(() => {
         if (!filters.marca) {
             setDistinctValues(prev => ({ ...prev, modelos: [] }));
@@ -120,47 +120,45 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
         });
     };
 
+    const hasActiveFilters = Object.entries(filters).some(([key, val]) => {
+        if (['page', 'limit', 'sort'].includes(key)) return false;
+        return val !== '' && val !== null && val !== undefined;
+    });
+
     return (
-        <aside className="w-full lg:w-72 flex-shrink-0 space-y-6 lg:block bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit sticky top-24">
+        <aside className="w-full lg:w-64 flex-shrink-0 space-y-4 lg:block bg-white p-4 rounded-lg border border-gray-100 shadow-sm h-fit sticky top-4">
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                    <Filter className="h-4 w-4 text-emerald-600" />
-                    <h2 className="text-base font-black text-gray-900 uppercase tracking-tighter">Filtros</h2>
+                    <Filter className="h-3.5 w-3.5 text-emerald-600" />
+                    <h2 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider">Filtros</h2>
                 </div>
-                <button
-                    onClick={handleReset}
-                    className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-emerald-600 transition-colors uppercase tracking-widest"
-                >
-                    <RotateCcw className="h-3 w-3" /> Limpar
-                </button>
+                {hasActiveFilters && (
+                    <button
+                        onClick={handleReset}
+                        className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-emerald-600 transition-colors uppercase tracking-widest"
+                    >
+                        <RotateCcw className="h-3 w-3" /> Limpar
+                    </button>
+                )}
             </div>
 
             <div className="space-y-4">
-                {/* Busca Textual */}
+                {/* Global Search */}
                 <div className="relative">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Pesquisa livre</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block px-1">Busca Rápida</label>
                     <div className="relative">
                         <input
                             type="text"
-                            placeholder="Ex: Hilux 2022..."
-                            className="w-full rounded-xl border border-gray-200 py-2.5 pl-3 pr-10 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                            placeholder="Marca, modelo..."
+                            className="w-full rounded-md border border-gray-200 bg-gray-50/50 py-2 pl-3 pr-8 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-emerald-500 focus:bg-white focus:outline-none transition-all"
                             value={filters.search || ''}
                             onChange={(e) => handleChange('search', e.target.value)}
                         />
-                        <Search className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                        <Search className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                    <SearchableSelect
-                        label="Organização"
-                        options={distinctValues.leiloeiros}
-                        value={filters.sourceName}
-                        onChange={(val) => handleChange('sourceName', val)}
-                        placeholder="Todas as organizações"
-                        disabled={loading.leiloeiros}
-                    />
-
+                <div className="grid grid-cols-1 gap-3">
                     <SearchableSelect
                         label="Marca"
                         options={distinctValues.marcas}
@@ -175,7 +173,7 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
                         options={distinctValues.modelos}
                         value={filters.modelo}
                         onChange={handleModeloChange}
-                        placeholder={filters.marca ? "Todos os modelos" : "Escolha uma marca"}
+                        placeholder={filters.marca ? "Todos os modelos" : "Escolha a marca"}
                         disabled={!filters.marca || loading.modelos}
                     />
 
@@ -184,7 +182,7 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
                         options={distinctValues.localidades}
                         value={filters.location}
                         onChange={(val) => handleChange('location', val)}
-                        placeholder="Em todo o Brasil"
+                        placeholder="Quaisquer"
                         disabled={loading.localidades}
                     />
 
@@ -193,47 +191,55 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
                         options={distinctValues.cores}
                         value={filters.cor}
                         onChange={(val) => handleChange('cor', val)}
-                        placeholder="Todas as cores"
+                        placeholder="Quaisquer"
                         disabled={loading.cores}
+                    />
+
+                    <SearchableSelect
+                        label="Organização"
+                        options={distinctValues.leiloeiros}
+                        value={filters.sourceName}
+                        onChange={(val) => handleChange('sourceName', val)}
+                        placeholder="Todas"
+                        disabled={loading.leiloeiros}
                     />
                 </div>
 
-                {/* Ano e Preço */}
-                <div className="space-y-4 pt-2">
-                    <div>
-                        <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Ano de Fabricação</h3>
+                <div className="space-y-4 pt-4 border-t border-gray-100">
+                    <div className="space-y-1.5">
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Ano</h3>
                         <div className="grid grid-cols-2 gap-2">
                             <input
                                 type="number"
                                 placeholder="De"
-                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 focus:border-emerald-500 focus:outline-none transition-all"
                                 value={filters.anoMin || ''}
                                 onChange={(e) => handleChange('anoMin', e.target.value)}
                             />
                             <input
                                 type="number"
                                 placeholder="Até"
-                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 focus:border-emerald-500 focus:outline-none transition-all"
                                 value={filters.anoMax || ''}
                                 onChange={(e) => handleChange('anoMax', e.target.value)}
                             />
                         </div>
                     </div>
 
-                    <div>
-                        <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Faixa de Preço</h3>
+                    <div className="space-y-1.5">
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Preço</h3>
                         <div className="grid grid-cols-2 gap-2">
                             <input
                                 type="number"
-                                placeholder="Mínimo"
-                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                placeholder="Min"
+                                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 focus:border-emerald-500 focus:outline-none transition-all"
                                 value={filters.precoMin || ''}
                                 onChange={(e) => handleChange('precoMin', e.target.value)}
                             />
                             <input
                                 type="number"
-                                placeholder="Máximo"
-                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                placeholder="Max"
+                                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 focus:border-emerald-500 focus:outline-none transition-all"
                                 value={filters.precoMax || ''}
                                 onChange={(e) => handleChange('precoMax', e.target.value)}
                             />
@@ -244,9 +250,9 @@ export default function FilterSidebar({ filters, setFilters, onApply }: FilterSi
 
             <button
                 onClick={onApply}
-                className="w-full rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black text-white shadow-lg shadow-emerald-100 hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 transition-all active:scale-[0.98] uppercase tracking-tight"
+                className="w-full rounded-lg bg-emerald-600 px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-[0.98] uppercase tracking-wide"
             >
-                Aplicar Filtros
+                Filtrar Resultados
             </button>
         </aside>
     );
