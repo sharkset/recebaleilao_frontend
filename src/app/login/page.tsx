@@ -2,10 +2,10 @@
 
 import { useState, useRef } from "react";
 import { signIn } from "next-auth/react";
-import Link from "next/link";
-import { Mail, ArrowLeft, Loader2, CheckCircle } from "lucide-react";
+import { Loader2, CheckCircle } from "lucide-react";
 import api from "@/lib/api";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
     const [step, setStep] = useState<'email' | 'otp'>('email');
@@ -16,173 +16,230 @@ export default function LoginPage() {
     const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
     const router = useRouter();
 
-    const handleEmailSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
+    const sendCode = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        setLoading(true); setError('');
         try {
             await api.post('/auth/request-otp', { email });
             setStep('otp');
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Erro ao enviar código');
-        } finally {
-            setLoading(false);
-        }
+            setError(err.response?.data?.message || 'Erro ao enviar o código');
+        } finally { setLoading(false); }
     };
 
     const handleOtpChange = (index: number, value: string) => {
         if (!/^\d*$/.test(value)) return;
-
-        const newOtp = [...otp];
-        newOtp[index] = value.slice(-1);
-        setOtp(newOtp);
-
-        if (value && index < 5) {
-            otpRefs.current[index + 1]?.focus();
-        }
+        const n = [...otp]; n[index] = value.slice(-1); setOtp(n);
+        if (value && index < 5) otpRefs.current[index + 1]?.focus();
     };
 
     const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+        if (e.key === 'Backspace' && !otp[index] && index > 0)
             otpRefs.current[index - 1]?.focus();
-        }
     };
 
-    const handleVerifyOtp = async () => {
-        setLoading(true);
-        setError('');
+    const handleVerify = async () => {
+        const token = otp.join('');
+        if (token.length < 6) { setError('Digite o código completo'); return; }
+        setLoading(true); setError('');
         try {
-            const token = otp.join('');
-            if (token.length < 6) {
-                setError('Digite o código de 6 dígitos');
-                return;
-            }
+            const result = await signIn('email-otp', { email, token, redirect: false });
+            if (result?.error) { setError('Código inválido ou expirado.'); return; }
+            router.push('/minha-conta'); router.refresh();
+        } catch { setError('Erro interno.'); }
+        finally { setLoading(false); }
+    };
 
-            // Note: In NextAuth with custom backend, we'd sign in here.
-            // For now, we simulate the logic: verify and redirect to plans.
-            await api.post('/auth/verify-otp', { email, token });
+    /* ─── Shared input style ─── */
+    const inputStyle: React.CSSProperties = {
+        width: '100%',
+        padding: '10px 12px',
+        background: '#fff',
+        border: '1px solid #d1d5db',
+        borderRadius: 4,
+        fontSize: 14,
+        color: '#111827',
+        outline: 'none',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+    };
 
-            // Redirect to plans page after successful login
-            router.push('/plans');
-        } catch (err: any) {
-            setError(err.response?.data?.message || 'Código inválido');
-        } finally {
-            setLoading(false);
-        }
+    const btnPrimary: React.CSSProperties = {
+        width: '100%',
+        padding: '10px 16px',
+        background: '#16a34a',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 4,
+        fontSize: 14,
+        fontWeight: 600,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-white rounded-[40px] shadow-2xl shadow-slate-200/50 p-8 md:p-12 relative overflow-hidden transition-all">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full -mr-16 -mt-16 blur-2xl" />
+        <div style={{
+            display: 'flex',
+            width: '100vw',
+            height: '100vh',
+            overflow: 'hidden',
+            background: '#e8e4db',
+        }}>
+            {/* ══ LEFT PANEL ══════════════════════════════════════════════ */}
+            <div style={{
+                width: '50%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',         /* clips OTP inputs from leaking */
+                background: '#e8e4db',
+                padding: '32px 56px',
+                boxSizing: 'border-box',
+            }}>
+                {/* Logo */}
+                <Link href="/" style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    color: '#374151',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    textDecoration: 'none',
+                    flexShrink: 0,
+                }}>
+                    <span style={{
+                        width: 20, height: 20,
+                        background: '#16a34a',
+                        borderRadius: 3,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontWeight: 900, fontSize: 11,
+                    }}>R</span>
+                    RecebaLeilão
+                </Link>
 
-                <button
-                    onClick={() => step === 'otp' ? setStep('email') : router.push('/')}
-                    className="inline-flex items-center gap-2 text-slate-400 hover:text-emerald-600 transition-colors mb-8 text-sm font-medium group"
-                >
-                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                    {step === 'otp' ? 'Voltar para o email' : 'Voltar para o início'}
-                </button>
+                {/* Spacer — pushes form to ~28% from top (like Retool) */}
+                <div style={{ height: '18%', flexShrink: 0 }} />
 
-                <div className="text-center mb-10">
-                    <div className="w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-200">
-                        <span className="text-white font-black text-2xl">R</span>
-                    </div>
-                    <h1 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">
-                        {step === 'email' ? 'Comece agora gratuitamente' : 'Verifique seu email'}
-                    </h1>
-                    <p className="text-slate-500 whitespace-pre-line">
-                        {step === 'email'
-                            ? 'Acesse o mapa completo de oportunidades em leilões.'
-                            : `Enviamos um código de 6 dígitos para\n ${email}`}
-                    </p>
-                </div>
-
-                <div className="space-y-6">
+                {/* Form block — max 320px, normal flow */}
+                <div style={{ maxWidth: 320, flexShrink: 0 }}>
                     {step === 'email' ? (
-                        <form onSubmit={handleEmailSubmit} className="space-y-4">
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <Mail className="h-5 w-5 text-slate-400" />
-                                </div>
-                                <input
-                                    type="email"
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="Digite seu email"
-                                    className="block w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-slate-400 text-slate-900"
-                                />
+                        <>
+                            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', lineHeight: 1.2, marginBottom: 24, marginTop: 0 }}>
+                                Bem-vindo de volta.<br />
+                                <span style={{ color: '#6b7280' }}>Entre na sua conta abaixo.</span>
+                            </h1>
+
+                            {/* Google */}
+                            <button
+                                onClick={() => signIn("google", { callbackUrl: "/minha-conta" })}
+                                style={{
+                                    ...inputStyle,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                    cursor: 'pointer', color: '#374151', fontWeight: 500,
+                                    marginBottom: 16,
+                                }}
+                            >
+                                <img src="https://www.google.com/favicon.ico" alt="" style={{ width: 16, height: 16 }} />
+                                Entrar com Google
+                            </button>
+
+                            {/* OR */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.12)' }} />
+                                <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>ou</span>
+                                <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.12)' }} />
                             </div>
 
-                            <button
-                                disabled={loading}
-                                type="submit"
-                                className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-emerald-100 hover:bg-emerald-500 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Continuar com Email'}
-                            </button>
-                        </form>
+                            {/* Email + button */}
+                            <form onSubmit={sendCode} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <input
+                                    type="email" required autoFocus
+                                    value={email} onChange={e => setEmail(e.target.value)}
+                                    placeholder="nome@empresa.com"
+                                    style={inputStyle}
+                                />
+                                <button type="submit" disabled={loading} style={{ ...btnPrimary, opacity: loading ? 0.6 : 1 }}>
+                                    {loading ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : 'Enviar código de acesso'}
+                                </button>
+                            </form>
+
+                            {error && <p style={{ marginTop: 8, color: '#ef4444', fontSize: 12 }}>{error}</p>}
+                        </>
                     ) : (
-                        <div className="space-y-6">
-                            <div className="flex justify-between gap-2">
+                        <>
+                            <h1 style={{ fontSize: 26, fontWeight: 700, color: '#111827', lineHeight: 1.2, marginBottom: 8, marginTop: 0 }}>
+                                Verifique seu email.
+                            </h1>
+                            <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 20 }}>
+                                Código enviado para <strong style={{ color: '#374151' }}>{email}</strong>
+                            </p>
+
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                                 {otp.map((digit, i) => (
                                     <input
-                                        key={i}
-                                        ref={(el) => { otpRefs.current[i] = el; }}
-                                        type="text"
-                                        maxLength={1}
-                                        value={digit}
-                                        onChange={(e) => handleOtpChange(i, e.target.value)}
-                                        onKeyDown={(e) => handleKeyDown(i, e)}
-                                        className="w-12 h-16 text-center text-2xl font-bold bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                                        key={i} ref={el => { otpRefs.current[i] = el; }}
+                                        type="text" inputMode="numeric" maxLength={1}
+                                        value={digit} autoFocus={i === 0}
+                                        onChange={e => handleOtpChange(i, e.target.value)}
+                                        onKeyDown={e => handleKeyDown(i, e)}
+                                        style={{
+                                            flex: '0 0 42px', width: 42, height: 48,
+                                            textAlign: 'center', fontSize: 20, fontWeight: 700,
+                                            background: '#fff', border: '1px solid #d1d5db', borderRadius: 4,
+                                            outline: 'none', color: '#111827',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                        }}
                                     />
                                 ))}
                             </div>
 
-                            <button
-                                onClick={handleVerifyOtp}
-                                disabled={loading || otp.some(d => !d)}
-                                className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-emerald-100 hover:bg-emerald-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                            >
-                                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Verificar Código'}
+                            <button onClick={handleVerify} disabled={loading || otp.some(d => !d)} style={{ ...btnPrimary, opacity: (loading || otp.some(d => !d)) ? 0.5 : 1, marginBottom: 12 }}>
+                                {loading ? <Loader2 style={{ width: 16, height: 16 }} /> : <><CheckCircle style={{ width: 14, height: 14 }} /> Verificar e entrar</>}
                             </button>
 
-                            <p className="text-center text-sm text-slate-400">
-                                Não recebeu? <button onClick={handleEmailSubmit} className="text-emerald-600 font-bold hover:underline">Reenviar</button>
-                            </p>
-                        </div>
-                    )}
+                            {error && <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 8 }}>{error}</p>}
 
-                    {error && <p className="text-red-500 text-center text-sm font-medium">{error}</p>}
-
-                    {step === 'email' && (
-                        <>
-                            <div className="relative py-4">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-slate-100"></div>
-                                </div>
-                                <div className="relative flex justify-center text-xs uppercase">
-                                    <span className="bg-white px-4 text-slate-400 font-bold tracking-widest">ou</span>
-                                </div>
+                            <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                                <button onClick={() => sendCode()} style={{ color: '#16a34a', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Reenviar</button>
+                                <span style={{ color: '#d1d5db' }}>·</span>
+                                <button onClick={() => { setStep('email'); setOtp(['', '', '', '', '', '']); setError(''); }} style={{ color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Outro email</button>
                             </div>
-
-                            <button
-                                onClick={() => signIn("google", { callbackUrl: "/search" })}
-                                className="w-full bg-white border border-slate-200 text-slate-700 py-4 rounded-2xl font-bold text-lg hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
-                            >
-                                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-                                Continuar com Google
-                            </button>
                         </>
                     )}
                 </div>
 
-                <p className="mt-10 text-center text-xs text-slate-400 leading-relaxed px-4">
-                    Ao continuar, você aceita nossos
-                    <a href="#" className="text-slate-600 font-bold hover:underline ml-1">Termos</a> e
-                    <a href="#" className="text-slate-600 font-bold hover:underline ml-1">Privacidade</a>.
-                </p>
+                {/* Legal — pushed to bottom */}
+                <div style={{ marginTop: 'auto' }}>
+                    <p style={{ fontSize: 11, color: '#16a34a', marginBottom: 4 }}>
+                        <a href="mailto:suporte@recebaleilao.com.br" style={{ color: 'inherit' }}>Precisa de ajuda? Fale conosco</a>
+                    </p>
+                    <p style={{ fontSize: 11, color: '#9ca3af' }}>
+                        Ao continuar, você concorda com nossa{' '}
+                        <a href="#" style={{ color: '#9ca3af' }}>Política de Privacidade</a>.
+                    </p>
+                </div>
+            </div>
+
+            {/* ══ RIGHT PANEL — hidden on mobile ══════════════════════════ */}
+            <div style={{ width: '50%', height: '100%', display: 'flex', flexDirection: 'column' }}
+                className="hidden lg:flex">
+                {/* Door image — top 63% */}
+                <div style={{ height: '63%', overflow: 'hidden' }}>
+                    <img src="/login-door.jpg" alt="Acesso" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }} />
+                </div>
+                {/* Trust logos — white, bottom 37% */}
+                <div style={{ flex: 1, background: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '32px 48px' }}>
+                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 16 }}>
+                        Leiloeiros na plataforma
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 32px' }}>
+                        {['PICELLI', 'SANTANDER', 'BRADESCO', 'SODRÉ SANTORO', 'FINAUTO', 'ZUCATO'].map(b => (
+                            <span key={b} style={{ color: '#9ca3af', fontSize: 13, fontWeight: 700 }}>{b}</span>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );

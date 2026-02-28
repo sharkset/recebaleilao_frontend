@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Menu, Search, User, LogOut, Settings, LayoutDashboard, Car, Calendar, Bell, Calculator, Heart, CreditCard, ChevronDown, MessageSquare, X } from 'lucide-react';
@@ -9,6 +9,18 @@ import { useSession, signOut } from 'next-auth/react';
 export default function Header() {
     const { data: session } = useSession();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        if (isMenuOpen) document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [isMenuOpen]);
 
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -75,12 +87,14 @@ export default function Header() {
                             <Link href="/plans" className="hover:text-emerald-500 transition-colors">Planos</Link>
                         </nav>
 
-                        <div className="hidden sm:flex items-center gap-4 text-slate-400">
-                            <Bell className="w-5 h-5 cursor-pointer hover:text-emerald-500 transition-colors" />
-                        </div>
+                        {session && (
+                            <div className="hidden sm:flex items-center gap-4 text-slate-400">
+                                <Bell className="w-5 h-5 cursor-pointer hover:text-emerald-500 transition-colors" />
+                            </div>
+                        )}
 
                         {session ? (
-                            <div className="relative">
+                            <div className="relative" ref={menuRef}>
                                 <button
                                     onClick={() => setIsMenuOpen(!isMenuOpen)}
                                     className="flex items-center gap-2 p-1 pl-3 lg:pl-4 bg-slate-50 border border-slate-100 rounded-full hover:bg-slate-100 transition-all"
@@ -109,12 +123,13 @@ export default function Header() {
                                                 <span className="font-black text-slate-900 truncate">{session.user?.name}</span>
                                                 <span className="text-xs text-slate-400 truncate">{session.user?.email}</span>
                                             </div>
-                                            <button className="ml-auto p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                                            <button className="ml-auto p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors" onClick={() => router.push('/minha-conta')}>
                                                 <Settings className="w-4 h-4 text-slate-400" />
                                             </button>
                                         </div>
 
                                         <div className="p-2">
+                                            <MenuLink href="/minha-conta" icon={<User className="w-4 h-4" />} title="Minha Conta" />
                                             <MenuLink href="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />} title="Início" />
                                             <MenuLink href="/search" icon={<Search className="w-4 h-4" />} title="Buscar" />
 
@@ -127,6 +142,7 @@ export default function Header() {
                                             <MenuLink href="#" icon={<Calculator className="w-4 h-4" />} title="Calculadora" premium />
                                             <MenuLink href="#" icon={<Heart className="w-4 h-4" />} title="Favoritos" />
                                             <MenuLink href="/plans" icon={<CreditCard className="w-4 h-4" />} title="Planos" badge="Assine já" badgeColor="bg-violet-100 text-violet-600" />
+
 
                                             <div className="my-2 border-t border-slate-50" />
 
@@ -142,20 +158,12 @@ export default function Header() {
                                 )}
                             </div>
                         ) : (
-                            <div className="flex items-center gap-3">
-                                <Link
-                                    href="/login"
-                                    className="hidden sm:block text-slate-500 font-bold hover:text-emerald-500 transition-colors"
-                                >
-                                    Entrar
-                                </Link>
-                                <Link
-                                    href="/login"
-                                    className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-4 lg:px-6 py-2 lg:py-3 text-xs lg:text-sm font-black text-white shadow-lg shadow-emerald-200 hover:bg-emerald-400 hover:scale-105 transition-all"
-                                >
-                                    Criar Conta
-                                </Link>
-                            </div>
+                            <Link
+                                href="/login"
+                                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-4 lg:px-6 py-2 lg:py-3 text-xs lg:text-sm font-bold text-slate-700 transition-all"
+                            >
+                                Entrar
+                            </Link>
                         )}
                         <button className="md:hidden p-2 text-slate-600 hover:text-emerald-500">
                             <Menu className="h-6 w-6" />

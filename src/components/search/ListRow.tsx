@@ -21,7 +21,10 @@ function formatDate(dateString?: string) {
 
 export default function ListRow({ lot }: ListRowProps) {
     const [imgIdx, setImgIdx] = useState(0);
-    const images = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
+    let images = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
+    if (lot.sourceName === 'receitafederal' && images.length > 1) {
+        images = images.slice(1);
+    }
     const title = `${lot.marca || ''} ${lot.modelo || ''}`.trim();
     const price = lot.precoMinimo
         ? `R$ ${lot.precoMinimo.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
@@ -138,7 +141,7 @@ export default function ListRow({ lot }: ListRowProps) {
                         <span className="text-base font-black text-gray-900 tracking-tighter whitespace-nowrap">{price}</span>
                     </div>
                     <Link
-                        href={`/lots/${lot.externalLotId}`}
+                        href={`/lots/${(lot.auctionId || lot.externalAuctionId || 0)}/${lot.externalLotId}`}
                         className="shrink-0 bg-emerald-600 text-white text-[11px] font-bold px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors active:scale-95 whitespace-nowrap"
                     >
                         Ver Detalhes

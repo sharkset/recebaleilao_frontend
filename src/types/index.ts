@@ -1,6 +1,7 @@
 export interface Lot {
     _id: string;
     externalLotId?: string | number;
+    externalAuctionId?: string | number;
     sourceName?: string;
     auctionId?: string | number;
     ano?: number;
@@ -25,6 +26,7 @@ export interface Lot {
     fipeValor?: number;
     lanceAtual?: number;
     visitas?: number;
+    organization?: string;
     statusRaw?: string;
     raw?: {
         images?: string[];

@@ -11,7 +11,10 @@ interface LotCardProps {
 export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const formattedTitle = `${lot.marca || ''} ${lot.modelo || ''} ${lot.versao || ''} ${lot.ano}/${lot.anoModelo}`.trim();
-    const displayImages = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
+    let displayImages = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
+    if (lot.sourceName === 'receitafederal' && displayImages.length > 1) {
+        displayImages = displayImages.slice(1);
+    }
 
     // Resume description to max 150 chars
     const truncatedDesc = lot.descricao
