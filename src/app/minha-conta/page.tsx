@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
     User, Settings, CreditCard, MessageSquare, Bell, LogOut,
     Save, Loader2, CheckCircle, Plus, Trash2, ChevronRight,
-    Phone, FileText, AlertCircle, Crown, Calendar, Zap, Pencil
+    Phone, FileText, AlertCircle, Crown, Calendar, Zap, Pencil, Heart
 } from "lucide-react";
 import api from "@/lib/api";
 import FipeSelector from "@/components/FipeSelector";
+import { formatCPF, validateCPF, formatPhoneBR, validatePhoneBR, normalizeNumbers } from "@/lib/brazilianUtils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,10 @@ interface UserProfile {
     whatsapp?: string;
     cpf?: string;
     role: string;
-    preferences?: { receivePromotions: boolean };
+    preferences?: { 
+        receivePromotions: boolean;
+        notifyFavorites: boolean;
+    };
 }
 
 interface WhatsAppAlert {
@@ -52,7 +56,18 @@ interface PaymentRecord {
     createdAt: string;
 }
 
-type Tab = "conta" | "alertas" | "preferencias" | "faturamento";
+interface Favorite {
+    _id: string;
+    lotId: string;
+    auctionId: string;
+    marca?: string;
+    modelo?: string;
+    ano?: string;
+    image?: string;
+    createdAt: string;
+}
+
+type Tab = "conta" | "alertas" | "favoritos" | "preferencias" | "faturamento" | "notificacoes";
 
 // ─── Tab Button ─────────────────────────────────────────────────────────────
 
@@ -75,19 +90,32 @@ function TabButton({ id, active, icon, label, onClick }: {
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
-export default function MinhaContaPage() {
+function MinhaContaContent() {
     const { data: session, status } = useSession();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [activeTab, setActiveTab] = useState<Tab>("conta");
+
+    // Sync active tab with URL
+    useEffect(() => {
+        const tab = searchParams.get("tab") as Tab;
+        if (tab && ["conta", "alertas", "favoritos", "preferencias", "faturamento", "notificacoes"].includes(tab)) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
 
     // Profile state
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [profileForm, setProfileForm] = useState({ name: "", whatsapp: "", cpf: "" });
+    const [profileForm, setProfileForm] = useState({ name: "", whatsapp: "", cpf: "", image: "" });
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileSuccess, setProfileSuccess] = useState(false);
+    const [profileErrors, setProfileErrors] = useState({ cpf: "", whatsapp: "" });
 
     // Preferences
-    const [preferences, setPreferences] = useState({ receivePromotions: true });
+    const [preferences, setPreferences] = useState({ 
+        receivePromotions: true,
+        notifyFavorites: true 
+    });
     const [savingPrefs, setSavingPrefs] = useState(false);
 
     // Alerts
@@ -109,6 +137,14 @@ export default function MinhaContaPage() {
     const [payments, setPayments] = useState<PaymentRecord[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(false);
 
+    // Favorites
+    const [favorites, setFavorites] = useState<Favorite[]>([]);
+    const [loadingFavorites, setLoadingFavorites] = useState(false);
+
+    // Notifications
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+
     // ── Auth guard
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -123,8 +159,16 @@ export default function MinhaContaPage() {
                 .then(res => {
                     const u = res.data.user;
                     setProfile(u);
-                    setProfileForm({ name: u.name || "", whatsapp: u.whatsapp || "", cpf: u.cpf || "" });
-                    setPreferences(u.preferences || { receivePromotions: true });
+                    setProfileForm({ 
+                        name: u.name || "", 
+                        whatsapp: u.whatsapp ? formatPhoneBR(u.whatsapp) : "", 
+                        cpf: u.cpf ? formatCPF(u.cpf) : "", 
+                        image: u.image || "" 
+                    });
+                    setPreferences({
+                        receivePromotions: u.preferences?.receivePromotions ?? true,
+                        notifyFavorites: u.preferences?.notifyFavorites ?? true
+                    });
                 })
                 .catch(() => { });
         }
@@ -141,6 +185,37 @@ export default function MinhaContaPage() {
         }
     }, [activeTab, session]);
 
+    // ── Load favorites when tab opens
+    useEffect(() => {
+        if (activeTab === "favoritos" && session?.user?.email) {
+            setLoadingFavorites(true);
+            api.get(`/favorites?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => setFavorites(res.data?.favorites || []))
+                .catch(() => setFavorites([]))
+                .finally(() => setLoadingFavorites(false));
+        }
+    }, [activeTab, session]);
+
+    // ── Load notifications when tab opens
+    useEffect(() => {
+        if (activeTab === "notificacoes" && session?.user?.email) {
+            setLoadingNotifications(true);
+            api.get(`/notifications?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => setNotifications(res.data?.notifications || []))
+                .catch(() => setNotifications([]))
+                .finally(() => setLoadingNotifications(false));
+        }
+    }, [activeTab, session]);
+
+    const handleMarkAsRead = async (id: string) => {
+        try {
+            await api.put(`/notifications/${id}/read`);
+            setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
+
     // ── Load payments when tab opens
     useEffect(() => {
         if (activeTab === "faturamento" && session?.user?.email) {
@@ -155,10 +230,30 @@ export default function MinhaContaPage() {
     // ── Save profile
     const handleSaveProfile = async () => {
         if (!session?.user?.email) return;
+
+        // Validation
+        const isCPFValid = !profileForm.cpf || validateCPF(profileForm.cpf);
+        const isWhatsappValid = !profileForm.whatsapp || validatePhoneBR(profileForm.whatsapp);
+
+        setProfileErrors({
+            cpf: isCPFValid ? "" : "CPF inválido",
+            whatsapp: isWhatsappValid ? "" : "Número inválido. Use formato celular com DDD."
+        });
+
+        if (!isCPFValid || !isWhatsappValid) return;
+
         setSavingProfile(true);
         try {
-            await api.put("/auth/me", { email: session.user.email, ...profileForm });
+            const dataToSave = {
+                ...profileForm,
+                cpf: normalizeNumbers(profileForm.cpf),
+                whatsapp: normalizeNumbers(profileForm.whatsapp).startsWith("55") 
+                    ? normalizeNumbers(profileForm.whatsapp) 
+                    : `55${normalizeNumbers(profileForm.whatsapp)}`
+            };
+            await api.put("/auth/me", { email: session.user.email, ...dataToSave });
             setProfileSuccess(true);
+            window.dispatchEvent(new Event('profileUpdated'));
             setTimeout(() => setProfileSuccess(false), 3000);
         } catch { }
         finally { setSavingProfile(false); }
@@ -242,6 +337,24 @@ export default function MinhaContaPage() {
         } catch { }
     };
 
+    // ── Delete favorite
+    const handleDeleteFavorite = async (id: string) => {
+        try {
+            await api.delete(`/favorites/${id}`);
+            setFavorites(prev => prev.filter(f => f._id !== id));
+        } catch { }
+    };
+
+    // ── Clear all favorites
+    const handleClearAllFavorites = async () => {
+        if (!session?.user?.email) return;
+        if (!confirm("Tem certeza que deseja remover todos os favoritos?")) return;
+        try {
+            await api.delete(`/favorites?email=${encodeURIComponent(session.user.email)}`);
+            setFavorites([]);
+        } catch { }
+    };
+
     if (status === "loading" || !profile) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -284,6 +397,8 @@ export default function MinhaContaPage() {
                     <div className="flex items-center gap-2 mt-6 overflow-x-auto pb-1">
                         <TabButton id="conta" active={activeTab === "conta"} icon={<User className="w-4 h-4" />} label="Minha Conta" onClick={() => setActiveTab("conta")} />
                         <TabButton id="alertas" active={activeTab === "alertas"} icon={<MessageSquare className="w-4 h-4" />} label="Alertas WhatsApp" onClick={() => setActiveTab("alertas")} />
+                        <TabButton id="favoritos" active={activeTab === "favoritos"} icon={<Heart className="w-4 h-4" />} label="Favoritos" onClick={() => setActiveTab("favoritos")} />
+                        <TabButton id="notificacoes" active={activeTab === "notificacoes"} icon={<Bell className="w-4 h-4" />} label="Notificações" onClick={() => setActiveTab("notificacoes")} />
                         <TabButton id="preferencias" active={activeTab === "preferencias"} icon={<Settings className="w-4 h-4" />} label="Preferências" onClick={() => setActiveTab("preferencias")} />
                         <TabButton id="faturamento" active={activeTab === "faturamento"} icon={<CreditCard className="w-4 h-4" />} label="Faturamento" onClick={() => setActiveTab("faturamento")} />
                     </div>
@@ -320,11 +435,13 @@ export default function MinhaContaPage() {
                                 <input
                                     type="text"
                                     value={profileForm.cpf}
-                                    onChange={e => setProfileForm(p => ({ ...p, cpf: e.target.value }))}
-                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                                    onChange={e => setProfileForm(p => ({ ...p, cpf: formatCPF(e.target.value) }))}
+                                    className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 transition-all ${profileErrors.cpf ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
                                     placeholder="000.000.000-00"
+                                    maxLength={14}
                                 />
                             </div>
+                            {profileErrors.cpf && <p className="text-[10px] text-red-500 font-bold ml-1">{profileErrors.cpf}</p>}
                         </div>
 
                         <div className="space-y-1">
@@ -339,11 +456,32 @@ export default function MinhaContaPage() {
                                     <input
                                         type="tel"
                                         value={profileForm.whatsapp}
-                                        onChange={e => setProfileForm(p => ({ ...p, whatsapp: e.target.value }))}
-                                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            // Only apply mask if it doesn't already have +55 and enough digits
+                                            setProfileForm(p => ({ ...p, whatsapp: formatPhoneBR(val) }));
+                                        }}
+                                        className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 transition-all ${profileErrors.whatsapp ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
                                         placeholder="(11) 99999-9999"
+                                        maxLength={19}
                                     />
                                 </div>
+                            </div>
+                            {profileErrors.whatsapp && <p className="text-[10px] text-red-500 font-bold ml-1">{profileErrors.whatsapp}</p>}
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Foto do perfil</label>
+                            <p className="text-xs text-slate-400">Insira a URL de uma imagem para o seu perfil</p>
+                            <div className="relative">
+                                <Settings className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={profileForm.image || ""}
+                                    onChange={e => setProfileForm(p => ({ ...p, image: e.target.value }))}
+                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                                    placeholder="https://exemplo.com/sua-foto.jpg"
+                                />
                             </div>
                         </div>
 
@@ -542,6 +680,160 @@ export default function MinhaContaPage() {
                     </div>
                 )}
 
+                {/* ─── Favoritos ─── */}
+                {activeTab === "favoritos" && (
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+                                <div>
+                                    <h2 className="font-black text-slate-900 text-lg">Meus Favoritos</h2>
+                                    <p className="text-xs text-slate-400">Lotes que você salvou para acompanhar</p>
+                                </div>
+                                {favorites.length > 0 && (
+                                    <button
+                                        onClick={handleClearAllFavorites}
+                                        className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" /> Limpar tudo
+                                    </button>
+                                )}
+                            </div>
+
+                            {loadingFavorites ? (
+                                <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+                            ) : favorites.length === 0 ? (
+                                <div className="p-16 text-center">
+                                    <div className="w-16 h-16 bg-pink-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <Heart className="w-8 h-8 text-pink-400" />
+                                    </div>
+                                    <p className="text-slate-500 font-bold">Nenhum favorito ainda</p>
+                                    <p className="text-xs text-slate-400 mt-1 max-w-[200px] mx-auto">Salve lotes interessantes clicando no ícone de coração nos resultados da busca.</p>
+                                    <button
+                                        onClick={() => router.push('/search')}
+                                        className="mt-6 text-emerald-500 text-sm font-black hover:underline"
+                                    >
+                                        Explorar leilões
+                                    </button>
+                                </div>
+                            ) : (
+                                <ul className="divide-y divide-slate-50">
+                                    {favorites.map(fav => (
+                                        <li key={fav._id} className="p-4 hover:bg-slate-50 transition-colors group">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-16 h-12 bg-slate-100 rounded-xl overflow-hidden shrink-0">
+                                                    {fav.image ? (
+                                                        <img
+                                                            src={fav.image}
+                                                            alt={fav.modelo}
+                                                            className="w-full h-full object-cover"
+                                                            referrerPolicy="no-referrer"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/f3f4f6/aaa?text=Lote';
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
+                                                            <Heart className="w-6 h-6" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-bold text-slate-800 text-sm truncate uppercase">
+                                                        {fav.marca ? `${fav.marca} ${fav.modelo}` : `Lote ID: ${fav.lotId}`}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        {fav.ano && <span className="text-[10px] bg-slate-100 text-slate-500 font-medium px-1.5 py-0.5 rounded-full">{fav.ano}</span>}
+                                                        <p className="text-[10px] text-slate-400">Adicionado em {new Date(fav.createdAt).toLocaleDateString()}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleDeleteFavorite(fav._id)}
+                                                        className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                                        title="Remover favorito"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => router.push(`/lots/${fav.auctionId || '0'}/${fav.lotId}`)}
+                                                        className="p-2 bg-slate-50 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                                                    >
+                                                        <ChevronRight className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ─── Notificações ─── */}
+                {activeTab === "notificacoes" && (
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+                                <div>
+                                    <h2 className="font-black text-slate-900 text-lg">Notificações</h2>
+                                    <p className="text-xs text-slate-400">Histórico de alertas e atividades</p>
+                                </div>
+                            </div>
+
+                            {loadingNotifications ? (
+                                <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+                            ) : notifications.length === 0 ? (
+                                <div className="p-16 text-center">
+                                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <Bell className="w-8 h-8 text-blue-400" />
+                                    </div>
+                                    <p className="text-slate-500 font-bold">Nenhuma notificação</p>
+                                    <p className="text-xs text-slate-400 mt-1 max-w-[200px] mx-auto">Você será notificado aqui sobre leilões e mudanças na sua conta.</p>
+                                </div>
+                            ) : (
+                                <ul className="divide-y divide-slate-50">
+                                    {notifications.map(n => {
+                                        const lotId = n.metadata?.lotId || n.lotId || n.externalLotId;
+                                        const auctionId = n.metadata?.auctionId || n.auctionId || n.externalAuctionId || '0';
+                                        const link = lotId ? `/lots/${auctionId}/${lotId}` : null;
+
+                                        return (
+                                            <li
+                                                key={n._id}
+                                                className={`p-5 hover:bg-slate-50 transition-colors cursor-pointer group flex items-start gap-4 ${!n.read ? 'bg-emerald-50/30' : ''}`}
+                                                onClick={() => {
+                                                    if (!n.read) handleMarkAsRead(n._id);
+                                                    if (link) router.push(link);
+                                                }}
+                                            >
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${!n.read ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                    <Bell className="w-5 h-5" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className={`text-sm font-bold ${!n.read ? 'text-slate-900' : 'text-slate-600'}`}>{n.title}</p>
+                                                        <span className="text-[10px] text-slate-400 font-medium">
+                                                            {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{n.message}</p>
+                                                    {link && (
+                                                        <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline">
+                                                            Ver detalhes do lote <ChevronRight className="w-3 h-3" />
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {!n.read && <div className="w-2 h-2 rounded-full bg-emerald-500 mt-2 shrink-0" />}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* ─── Preferências ─── */}
                 {activeTab === "preferencias" && (
                     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-5">
@@ -550,39 +842,55 @@ export default function MinhaContaPage() {
                         <div className="border border-slate-100 rounded-2xl divide-y divide-slate-50">
                             <div className="flex items-center justify-between p-4">
                                 <div>
-                                    <p className="font-bold text-slate-700 text-sm">Não quero receber promoções</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Desativa emails e notificações promocionais</p>
+                                    <p className="text-sm font-bold text-slate-800">Promoções e Novidades</p>
+                                    <p className="text-xs text-slate-400">Receba ofertas e novos recursos por email</p>
                                 </div>
-                                <button
+                                <div
                                     onClick={() => setPreferences(p => ({ ...p, receivePromotions: !p.receivePromotions }))}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${!preferences.receivePromotions ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${preferences.receivePromotions ? 'bg-emerald-500' : 'bg-slate-200'}`}
                                 >
-                                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${!preferences.receivePromotions ? 'translate-x-5' : ''}`} />
-                                </button>
-                            </div>
-
-                            <div className="flex items-center justify-between p-4">
-                                <div>
-                                    <p className="font-bold text-slate-700 text-sm">Alertas de novos leilões</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Receba alertas por WhatsApp quando novos lotes aparecerem</p>
+                                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${preferences.receivePromotions ? 'translate-x-5' : ''}`} />
                                 </div>
-                                <button
-                                    onClick={() => { }}
-                                    className="relative w-11 h-6 rounded-full bg-emerald-500 transition-colors"
+                            </div>
+                            
+                            <div className="flex items-start justify-between p-4">
+                                <div className="flex-1 pr-4">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-bold text-slate-800">Notificar favoritos</p>
+                                        <div className="group relative">
+                                            <AlertCircle className="w-3.5 h-3.5 text-slate-300 cursor-help" />
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl leading-relaxed">
+                                                <p className="font-bold border-b border-white/10 pb-1 mb-1">Como funcionam os lembretes:</p>
+                                                <ul className="list-disc pl-3 mt-1 space-y-1">
+                                                    <li>Enviamos alertas 72h, 48h e 6h antes do início do leilão.</li>
+                                                    <li>Você recebe por Email e WhatsApp.</li>
+                                                    <li>Lotes expirados ou removidos não geram alertas.</li>
+                                                    <li>Você pode desativar a qualquer momento aqui.</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-0.5">Alertas automáticos 72h, 48h e 6h antes do leilão dos seus lotes salvos</p>
+                                </div>
+                                <div
+                                    onClick={() => setPreferences(p => ({ ...p, notifyFavorites: !p.notifyFavorites }))}
+                                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${preferences.notifyFavorites ? 'bg-emerald-500' : 'bg-slate-200'}`}
                                 >
-                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow translate-x-5" />
-                                </button>
+                                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${preferences.notifyFavorites ? 'translate-x-5' : ''}`} />
+                                </div>
                             </div>
                         </div>
 
-                        <button
-                            onClick={handleSavePrefs}
-                            disabled={savingPrefs}
-                            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-6 py-3 rounded-2xl transition-all shadow-lg shadow-emerald-100 disabled:opacity-60"
-                        >
-                            {savingPrefs ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Salvar preferências
-                        </button>
+                        <div className="pt-2">
+                            <button
+                                onClick={handleSavePrefs}
+                                disabled={savingPrefs}
+                                className="flex items-center gap-2 bg-slate-900 border border-slate-800 text-white font-bold px-6 py-3 rounded-2xl transition-all hover:bg-slate-800 disabled:opacity-50"
+                            >
+                                {savingPrefs ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                Salvar preferências
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -657,5 +965,13 @@ export default function MinhaContaPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function MinhaContaPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-emerald-500" /></div>}>
+            <MinhaContaContent />
+        </Suspense>
     );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    Search, RotateCcw, Filter, ChevronDown, Check, X
+    Search, RotateCcw, Filter, ChevronDown, Check, X, Zap
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -16,11 +16,13 @@ const UF_LIST = [
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface Filters {
     search: string;
-    marca: string;
-    modelo: string;
-    location: string;
+    marca: string[];
+    modelo: string[];
+    location: string[];
     cor: string[];
     sourceName: string[];
+    tipo: string[];
+    tipoDeMonta: string[];
     anoMin: string;
     anoMax: string;
     precoMin: string;
@@ -52,7 +54,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function SingleSelect({
     label, options, value, onChange, placeholder, disabled,
 }: {
-    label: string; options: string[]; value: string;
+    label: string; options: (string | { name: string, count: number })[]; value: string;
     onChange: (v: string) => void; placeholder?: string; disabled?: boolean;
 }) {
     const [open, setOpen] = useState(false);
@@ -60,11 +62,15 @@ function SingleSelect({
     const ref = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const filtered = options.filter(o => o.toLowerCase().includes(q.toLowerCase()))
-        .sort((a, b) => {
-            const qs = q.toLowerCase();
-            return (b.toLowerCase().startsWith(qs) ? 1 : 0) - (a.toLowerCase().startsWith(qs) ? 1 : 0);
-        });
+    const filtered = options.filter(o => {
+        const name = typeof o === 'string' ? o : o.name;
+        return name.toLowerCase().includes(q.toLowerCase());
+    }).sort((a, b) => {
+        const nameA = typeof a === 'string' ? a : a.name;
+        const nameB = typeof b === 'string' ? b : b.name;
+        const qs = q.toLowerCase();
+        return (nameB.toLowerCase().startsWith(qs) ? 1 : 0) - (nameA.toLowerCase().startsWith(qs) ? 1 : 0);
+    });
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -78,7 +84,14 @@ function SingleSelect({
 
     return (
         <div className="relative" ref={ref}>
-            <SectionLabel>{label}</SectionLabel>
+            <div className="flex items-center justify-between mb-1.5 px-0.5">
+                <SectionLabel>{label}</SectionLabel>
+                {(label === 'Marca' || label === 'Modelo') && (
+                    <span className="bg-emerald-500 text-white text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase flex items-center gap-1">
+                        <Zap className="w-2 h-2" /> Premium
+                    </span>
+                )}
+            </div>
             <button
                 type="button"
                 disabled={disabled}
@@ -87,7 +100,7 @@ function SingleSelect({
           ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-100' : 'cursor-pointer bg-white border-gray-200 hover:border-emerald-500'}
           ${open ? 'border-emerald-500 ring-1 ring-emerald-500/20' : ''}`}
             >
-                <span className={`truncate ${!value ? 'text-gray-400' : 'text-gray-700 font-semibold'}`}>
+                <span className={`truncate ${!value ? 'text-gray-400 font-medium' : 'text-slate-700 font-semibold'}`}>
                     {value || placeholder || 'Todos'}
                 </span>
                 <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform shrink-0 ml-1 ${open ? 'rotate-180 text-emerald-500' : ''}`} />
@@ -96,39 +109,52 @@ function SingleSelect({
             {open && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
                     <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-50 bg-gray-50/50">
-                        <Search className="h-3 w-3 text-gray-400 shrink-0" />
+                        <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                         <input
                             ref={inputRef}
                             type="text"
-                            placeholder="Buscar..."
+                            placeholder={`Buscar ${label.toLowerCase()}...`}
                             value={q}
                             onChange={e => setQ(e.target.value)}
-                            className="flex-1 text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400"
+                            className="flex-1 text-xs bg-transparent outline-none text-slate-700 placeholder-gray-400"
                         />
-                        {q && <button onClick={() => setQ('')}><X className="h-3 w-3 text-gray-400" /></button>}
+                        {q && <button onClick={() => setQ('')}><X className="h-3.5 w-3.5 text-gray-400" /></button>}
                     </div>
                     <div className="max-h-52 overflow-y-auto p-1">
                         {value && (
                             <button
                                 onClick={() => { onChange(''); setOpen(false); setQ(''); }}
-                                className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold text-red-500 hover:bg-red-50 rounded-md flex items-center gap-1.5"
+                                className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold text-red-500 hover:bg-red-50 rounded-md flex items-center gap-1.5 transition-colors"
                             >
-                                <X className="h-3 w-3" /> Limpar seleção
+                                <X className="h-3.5 w-3.5" /> Limpar seleção
                             </button>
                         )}
                         {filtered.length === 0 ? (
-                            <p className="text-center text-[11px] text-gray-400 py-4">Nenhum resultado</p>
-                        ) : filtered.map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => { onChange(opt); setOpen(false); setQ(''); }}
-                                className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between transition-colors
-                  ${value === opt ? 'bg-emerald-500 text-white font-semibold' : 'text-gray-700 hover:bg-emerald-50 hover:text-emerald-700'}`}
-                            >
-                                <span className="truncate">{opt}</span>
-                                {value === opt && <Check className="h-3 w-3 shrink-0" />}
-                            </button>
-                        ))}
+                            <p className="text-center text-[11px] text-gray-400 py-4 font-semibold">Nenhum resultado</p>
+                        ) : filtered.map((opt, i) => {
+                            const name = typeof opt === 'string' ? opt : opt.name;
+                            const count = typeof opt === 'string' ? null : opt.count;
+                            const isSelected = value === name;
+
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => { onChange(name); setOpen(false); setQ(''); }}
+                                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between transition-colors
+                                        ${isSelected ? 'bg-emerald-500 text-white font-semibold' : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-medium'}`}
+                                >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                        <span className="truncate">{name}</span>
+                                        {typeof count === 'number' && (
+                                            <span className={`text-[10px] ${isSelected ? 'text-emerald-100' : 'text-gray-400 font-bold'}`}>
+                                                ({count})
+                                            </span>
+                                        )}
+                                    </div>
+                                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -140,7 +166,7 @@ function SingleSelect({
 function MultiSelect({
     label, options, values, onChange, placeholder, disabled,
 }: {
-    label: string; options: string[]; values: string[];
+    label: string; options: (string | { name: string, count: number })[]; values: string[];
     onChange: (v: string[]) => void; placeholder?: string; disabled?: boolean;
 }) {
     const [open, setOpen] = useState(false);
@@ -148,7 +174,10 @@ function MultiSelect({
     const ref = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const filtered = options.filter(o => o.toLowerCase().includes(q.toLowerCase()));
+    const filtered = options.filter(o => {
+        const name = typeof o === 'string' ? o : o.name;
+        return name.toLowerCase().includes(q.toLowerCase());
+    });
 
     const toggle = (opt: string) => {
         const next = values.includes(opt)
@@ -167,9 +196,14 @@ function MultiSelect({
 
     useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
+    const findName = (v: string) => {
+        const found = options.find(o => (typeof o === 'string' ? o : o.name) === v);
+        return found ? (typeof found === 'string' ? found : found.name) : v;
+    };
+
     const display = values.length === 0 ? (placeholder || 'Todas')
-        : values.length === 1 ? values[0]
-            : `${values[0]} +${values.length - 1}`;
+        : values.length === 1 ? findName(values[0])
+            : `${findName(values[0])} +${values.length - 1}`;
 
     return (
         <div className="relative" ref={ref}>
@@ -182,7 +216,7 @@ function MultiSelect({
           ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-100' : 'cursor-pointer bg-white border-gray-200 hover:border-emerald-500'}
           ${open ? 'border-emerald-500 ring-1 ring-emerald-500/20' : ''}`}
             >
-                <span className={`truncate ${values.length === 0 ? 'text-gray-400' : 'text-gray-700 font-semibold'}`}>
+                <span className={`truncate ${values.length === 0 ? 'text-gray-400' : 'text-slate-700 font-semibold'}`}>
                     {display}
                 </span>
                 <div className="flex items-center gap-1 shrink-0 ml-1">
@@ -202,31 +236,46 @@ function MultiSelect({
             {open && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
                     <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-50 bg-gray-50/50">
-                        <Search className="h-3 w-3 text-gray-400 shrink-0" />
+                        <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                         <input
                             ref={inputRef}
                             type="text"
-                            placeholder="Buscar..."
+                            placeholder={`Buscar ${label.toLowerCase()}...`}
                             value={q}
                             onChange={e => setQ(e.target.value)}
-                            className="flex-1 text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400"
+                            className="flex-1 text-xs bg-transparent outline-none text-slate-700 placeholder-gray-400"
                         />
-                        {q && <button onClick={() => setQ('')}><X className="h-3 w-3 text-gray-400" /></button>}
+                        {q && <button onClick={() => setQ('')}><X className="h-3.5 w-3.5 text-gray-400" /></button>}
                     </div>
                     <div className="max-h-52 overflow-y-auto p-1">
                         {filtered.length === 0 ? (
-                            <p className="text-center text-[11px] text-gray-400 py-4">Nenhum resultado</p>
-                        ) : filtered.map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => toggle(opt)}
-                                className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between transition-colors
-                  ${values.includes(opt) ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'text-gray-700 hover:bg-emerald-50 hover:text-emerald-700'}`}
-                            >
-                                <span className="truncate">{opt}</span>
-                                {values.includes(opt) && <Check className="h-3 w-3 text-emerald-500 shrink-0" />}
-                            </button>
-                        ))}
+                            <p className="text-center text-[11px] text-gray-400 py-4 font-semibold">Nenhum resultado</p>
+                        ) : filtered.map((opt, i) => {
+                            const name = typeof opt === 'string' ? opt : opt.name;
+                            const count = typeof opt === 'string' ? null : opt.count;
+                            const isSelected = values.includes(name);
+
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => toggle(name)}
+                                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between transition-colors mb-0.5
+                                        ${isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-medium'}`}
+                                >
+                                    <div className="flex items-center gap-2 truncate">
+                                        <div className={`w-3 h-3 rounded border flex items-center justify-center transition-colors
+                                            ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-gray-300'}`}>
+                                            {isSelected && <Check className="w-2 h-2 text-white" />}
+                                        </div>
+                                        <span className="truncate">{name}</span>
+                                        {typeof count === 'number' && (
+                                            <span className="text-[10px] text-gray-400 font-bold">({count})</span>
+                                        )}
+                                    </div>
+                                    {isSelected && <Check className="h-3 w-3 text-emerald-500 shrink-0 lg:hidden" />}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -236,15 +285,32 @@ function MultiSelect({
 
 // ─── Main Sidebar ─────────────────────────────────────────────────────────────
 export default function FilterSidebar({ filters, onChange, onApply, onReset, horizontal = false }: FilterSidebarProps) {
-    const [distinctValues, setDistinctValues] = useState({
-        marcas: [] as string[],
-        modelos: [] as string[],
-        localidades: [] as string[],
-        leiloeiros: [] as string[],
-        cores: [] as string[],
+    const [distinctValues, setDistinctValues] = useState<{
+        marcas: { name: string, count: number }[],
+        modelos: { name: string, count: number }[],
+        localidades: { name: string, count: number }[],
+        leiloeiros: { name: string, count: number }[],
+        cores: { name: string, count: number }[],
+        tipos: { name: string, count: number }[],
+        tiposDeMonta: { name: string, count: number }[],
+    }>({
+        marcas: [],
+        modelos: [],
+        localidades: [],
+        leiloeiros: [],
+        cores: [],
+        tipos: [],
+        tiposDeMonta: [],
     });
+
     const [loading, setLoading] = useState({
-        marcas: true, modelos: false, cores: true, localidades: true, leiloeiros: true,
+        marcas: true,
+        modelos: false,
+        localidades: true,
+        leiloeiros: true,
+        cores: true,
+        tipos: true,
+        tiposDeMonta: true,
     });
 
     // Fetch initial filter values
@@ -258,14 +324,16 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         ...prev,
                         marcas: d.marcas || [],
                         cores: d.cores || [],
-                        localidades: d.localidades || [],
+                        localidades: (d.localidades || []).map((l: any) => typeof l === 'string' ? { name: l, count: 0 } : l),
                         leiloeiros: d.leiloeiros || [],
+                        tipos: d.tipos || [],
+                        tiposDeMonta: d.tiposDeMonta || [],
                     }));
                 }
             } catch (err) {
                 console.error('Failed to load filter values:', err);
             } finally {
-                setLoading(prev => ({ ...prev, marcas: false, cores: false, localidades: false, leiloeiros: false }));
+                setLoading(prev => ({ ...prev, marcas: false, cores: false, localidades: false, leiloeiros: false, tipos: false, tiposDeMonta: false }));
             }
         }
         fetchInitial();
@@ -273,25 +341,32 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
 
     // Fetch models when brand changes
     useEffect(() => {
-        if (!filters.marca) {
+        const brand = filters.marca?.[0];
+        if (!brand) {
             setDistinctValues(prev => ({ ...prev, modelos: [] }));
             return;
         }
         async function fetchModels() {
-            setLoading(prev => ({ ...prev, modelos: true }));
+            setLoading(prev => ({ ...prev, modelos: true, tipos: true, tiposDeMonta: true }));
             try {
-                const resp = await api.get('/lots/distinct-values', { params: { marca: filters.marca } });
+                const resp = await api.get('/lots/distinct-values', { params: { marca: brand } });
                 if (resp.data.success) {
-                    setDistinctValues(prev => ({ ...prev, modelos: resp.data.data.modelos || [] }));
+                    setDistinctValues(prev => ({
+                        ...prev,
+                        modelos: resp.data.data.modelos || [],
+                        tipos: resp.data.data.tipos || [],
+                        tiposDeMonta: resp.data.data.tiposDeMonta || [],
+                    }));
                 }
             } catch (err) {
                 console.error('Failed to load models:', err);
             } finally {
-                setLoading(prev => ({ ...prev, modelos: false }));
+                setLoading(prev => ({ ...prev, modelos: false, tipos: false, tiposDeMonta: false }));
             }
         }
         fetchModels();
-    }, [filters.marca]);
+    }, [filters.marca?.[0]]);
+
     const hasActive = Object.entries(filters).some(([k, v]) => {
         if (['page', 'limit', 'sort'].includes(k)) return false;
         if (Array.isArray(v)) return v.length > 0;
@@ -303,10 +378,8 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
         ...UF_LIST,
         ...(distinctValues.localidades || [])
             .map(l => {
-                // Se a string contiver '/', tenta pegar o que vem depois (ex: 'Jacarei / SP')
-                // Se não, tenta ver se a própria string é uma UF de 2 letras
-                const parts = l.split('/');
-                const potUF = (parts.length > 1 ? parts[parts.length - 1] : l).trim().toUpperCase();
+                const parts = l.name.split('/');
+                const potUF = (parts.length > 1 ? parts[parts.length - 1] : l.name).trim().toUpperCase();
                 return (potUF.length === 2 && UF_LIST.includes(potUF)) ? potUF : null;
             })
             .filter((v): v is string => !!v)
@@ -316,33 +389,52 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
     if (horizontal) {
         return (
             <div className="w-full flex flex-col gap-3">
-                {/* Row 1: Marca + Modelo + Location */}
                 <div className="flex flex-wrap gap-2 items-end">
                     <div className="flex-1 min-w-[120px]">
-                        <SingleSelect
+                        <MultiSelect
                             label="Marca"
                             options={distinctValues.marcas}
-                            value={filters.marca}
-                            onChange={val => { onChange('marca', val); onChange('modelo', ''); }}
+                            values={filters.marca}
+                            onChange={val => { onChange('marca', val); onChange('modelo', []); }}
                             placeholder={loading.marcas ? 'Carregando...' : 'Marca'}
                             disabled={loading.marcas}
                         />
                     </div>
                     <div className="flex-1 min-w-[120px]">
-                        <SingleSelect
+                        <MultiSelect
                             label="Modelo"
                             options={distinctValues.modelos}
-                            value={filters.modelo}
+                            values={filters.modelo}
                             onChange={val => onChange('modelo', val)}
-                            placeholder={!filters.marca ? 'Escolha marca' : 'Modelo'}
-                            disabled={!filters.marca || loading.modelos}
+                            placeholder={filters.marca.length === 0 ? 'Escolha marca' : 'Modelo'}
+                            disabled={filters.marca.length === 0 || loading.modelos}
+                        />
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                        <MultiSelect
+                            label="Tipo"
+                            options={distinctValues.tipos}
+                            values={filters.tipo}
+                            onChange={val => onChange('tipo', val)}
+                            placeholder={loading.tipos ? 'Carregando...' : 'Tipo'}
+                            disabled={loading.tipos}
+                        />
+                    </div>
+                    <div className="flex-1 min-w-[130px]">
+                        <MultiSelect
+                            label="Tipo de Monta"
+                            options={distinctValues.tiposDeMonta}
+                            values={filters.tipoDeMonta}
+                            onChange={val => onChange('tipoDeMonta', val)}
+                            placeholder={loading.tiposDeMonta ? 'Carregando...' : 'Monta'}
+                            disabled={loading.tiposDeMonta}
                         />
                     </div>
                     <div className="flex-1 min-w-[100px]">
-                        <SingleSelect
+                        <MultiSelect
                             label="Estado"
                             options={allUFs}
-                            value={filters.location}
+                            values={filters.location}
                             onChange={val => onChange('location', val)}
                             placeholder="UF"
                         />
@@ -368,7 +460,6 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         />
                     </div>
                 </div>
-                {/* Row 2: Year + Price + Buttons */}
                 <div className="flex flex-wrap gap-2 items-end">
                     <div className="flex items-end gap-1 min-w-[160px]">
                         <div className="flex-1">
@@ -413,10 +504,8 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
         );
     }
 
-    // ── Vertical (desktop) mode ───────────────────────────────────────────────
     return (
         <div className="flex flex-col gap-5">
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Filter className="h-3.5 w-3.5 text-emerald-600" />
@@ -432,33 +521,52 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                 )}
             </div>
 
-            {/* Filters */}
             <div className="flex flex-col gap-4">
-                <SingleSelect
-                    label="Marca"
-                    options={distinctValues.marcas}
-                    value={filters.marca}
-                    onChange={val => {
-                        onChange('marca', val);
-                        onChange('modelo', '');
-                    }}
-                    placeholder={loading.marcas ? 'Carregando...' : 'Todas as marcas'}
-                    disabled={loading.marcas}
-                />
+                <div className="space-y-4">
+                    <MultiSelect
+                        label="Marca"
+                        options={distinctValues.marcas}
+                        values={filters.marca}
+                        onChange={val => {
+                            onChange('marca', val);
+                            onChange('modelo', []);
+                        }}
+                        placeholder={loading.marcas ? 'Carregando...' : 'Todas as marcas'}
+                        disabled={loading.marcas}
+                    />
 
-                <SingleSelect
-                    label="Modelo"
-                    options={distinctValues.modelos}
-                    value={filters.modelo}
-                    onChange={val => onChange('modelo', val)}
-                    placeholder={!filters.marca ? 'Escolha a marca primeiro' : loading.modelos ? 'Carregando...' : 'Todos os modelos'}
-                    disabled={!filters.marca || loading.modelos}
-                />
+                    <MultiSelect
+                        label="Modelo"
+                        options={distinctValues.modelos}
+                        values={filters.modelo}
+                        onChange={val => onChange('modelo', val)}
+                        placeholder={filters.marca.length === 0 ? 'Escolha a marca primeiro' : loading.modelos ? 'Carregando...' : 'Todos os modelos'}
+                        disabled={filters.marca.length === 0 || loading.modelos}
+                    />
 
-                <SingleSelect
+                    <MultiSelect
+                        label="Tipo"
+                        options={distinctValues.tipos}
+                        values={filters.tipo}
+                        onChange={val => onChange('tipo', val)}
+                        placeholder={loading.tipos ? 'Carregando...' : 'Todos os tipos'}
+                        disabled={loading.tipos}
+                    />
+
+                    <MultiSelect
+                        label="Tipo de Monta"
+                        options={distinctValues.tiposDeMonta}
+                        values={filters.tipoDeMonta}
+                        onChange={val => onChange('tipoDeMonta', val)}
+                        placeholder={loading.tiposDeMonta ? 'Carregando...' : 'Todos os tipos de monta'}
+                        disabled={loading.tiposDeMonta}
+                    />
+                </div>
+
+                <MultiSelect
                     label="Estado (UF)"
                     options={allUFs}
-                    value={filters.location}
+                    values={filters.location}
                     onChange={val => onChange('location', val)}
                     placeholder="Qualquer estado"
                 />
@@ -477,15 +585,13 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                     options={distinctValues.leiloeiros}
                     values={filters.sourceName}
                     onChange={vals => onChange('sourceName', vals)}
-                    placeholder={loading.leiloeiros ? 'Carregando...' : 'Todas'}
+                    placeholder={loading.leiloeiros ? 'Carregando...' : 'Todas as organizações'}
                     disabled={loading.leiloeiros}
                 />
             </div>
 
-            {/* Separator */}
             <div className="border-t border-gray-100" />
 
-            {/* Year range */}
             <div>
                 <SectionLabel>Ano</SectionLabel>
                 <div className="grid grid-cols-2 gap-2">
@@ -497,7 +603,7 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         max="2030"
                         value={filters.anoMin}
                         onChange={e => onChange('anoMin', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
                     />
                     <input
                         type="number"
@@ -507,12 +613,11 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         max="2030"
                         value={filters.anoMax}
                         onChange={e => onChange('anoMax', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
                     />
                 </div>
             </div>
 
-            {/* Price range */}
             <div>
                 <SectionLabel>Preço (R$)</SectionLabel>
                 <div className="grid grid-cols-2 gap-2">
@@ -523,7 +628,7 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         min="0"
                         value={filters.precoMin}
                         onChange={e => onChange('precoMin', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
                     />
                     <input
                         type="number"
@@ -532,12 +637,11 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         min="0"
                         value={filters.precoMax}
                         onChange={e => onChange('precoMax', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
                     />
                 </div>
             </div>
 
-            {/* Apply button */}
             <button
                 onClick={onApply}
                 className="w-full rounded-lg bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-700 transition-all active:scale-[0.98] uppercase tracking-wide shadow-sm"

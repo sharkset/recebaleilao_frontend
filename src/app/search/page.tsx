@@ -14,11 +14,13 @@ import { Search as SearchIcon, AlertCircle } from 'lucide-react';
 // ─── Default filter state ────────────────────────────────────────────────────
 const DEFAULT_FILTERS: Filters = {
   search: '',
-  marca: '',
-  modelo: '',
-  location: '',
+  marca: [],
+  modelo: [],
+  location: [],
   cor: [],
   sourceName: [],
+  tipo: [],
+  tipoDeMonta: [],
   anoMin: '',
   anoMax: '',
   precoMin: '',
@@ -32,11 +34,13 @@ const DEFAULT_FILTERS: Filters = {
 function filtersToParams(f: Filters): Record<string, string> {
   const p: Record<string, string> = {};
   if (f.search) p.search = f.search;
-  if (f.marca) p.marca = f.marca;
-  if (f.modelo) p.modelo = f.modelo;
-  if (f.location) p.location = f.location;
+  if (f.marca.length) p.marca = f.marca.join(',');
+  if (f.modelo.length) p.modelo = f.modelo.join(',');
+  if (f.location.length) p.location = f.location.join(',');
   if (f.cor.length) p.cor = f.cor.join(',');
   if (f.sourceName.length) p.sourceName = f.sourceName.join(',');
+  if (f.tipo.length) p.tipo = f.tipo.join(',');
+  if (f.tipoDeMonta.length) p.tipoDeMonta = f.tipoDeMonta.join(',');
   if (f.anoMin) p.anoMin = f.anoMin;
   if (f.anoMax) p.anoMax = f.anoMax;
   if (f.precoMin) p.precoMin = f.precoMin;
@@ -49,11 +53,13 @@ function filtersToParams(f: Filters): Record<string, string> {
 function paramsToFilters(params: URLSearchParams): Filters {
   return {
     search: params.get('search') || '',
-    marca: params.get('marca') || '',
-    modelo: params.get('modelo') || '',
-    location: params.get('location') || '',
+    marca: params.get('marca') ? params.get('marca')!.split(',') : [],
+    modelo: params.get('modelo') ? params.get('modelo')!.split(',') : [],
+    location: params.get('location') ? params.get('location')!.split(',') : [],
     cor: params.get('cor') ? params.get('cor')!.split(',') : [],
     sourceName: params.get('sourceName') ? params.get('sourceName')!.split(',') : [],
+    tipo: params.get('tipo') ? params.get('tipo')!.split(',') : [],
+    tipoDeMonta: params.get('tipoDeMonta') ? params.get('tipoDeMonta')!.split(',') : [],
     anoMin: params.get('anoMin') || '',
     anoMax: params.get('anoMax') || '',
     precoMin: params.get('precoMin') || '',
@@ -86,11 +92,13 @@ function SearchPageInner() {
   const buildApiParams = useCallback((f: Filters) => {
     const p: Record<string, any> = { page: f.page, limit: f.limit, sort: f.sort };
     if (f.search) p.search = f.search;
-    if (f.marca) p.marca = f.marca;
-    if (f.modelo) p.modelo = f.modelo;
-    if (f.location) p.location = f.location;
+    if (f.marca.length) p.marca = f.marca.join(',');
+    if (f.modelo.length) p.modelo = f.modelo.join(',');
+    if (f.location.length) p.location = f.location.join(',');
     if (f.cor.length) p.cor = f.cor.join(',');
     if (f.sourceName.length) p.sourceName = f.sourceName.join(',');
+    if (f.tipo.length) p.tipo = f.tipo.join(',');
+    if (f.tipoDeMonta.length) p.tipoDeMonta = f.tipoDeMonta.join(',');
     if (f.anoMin) p.anoMin = f.anoMin;
     if (f.anoMax) p.anoMax = f.anoMax;
     if (f.precoMin) p.precoMin = f.precoMin;
@@ -126,13 +134,15 @@ function SearchPageInner() {
     // We compare key values that affect the search
     const hasChanged =
       fromUrl.search !== filters.search ||
-      fromUrl.marca !== filters.marca ||
-      fromUrl.modelo !== filters.modelo ||
-      fromUrl.location !== filters.location ||
-      fromUrl.page !== filters.page ||
-      fromUrl.sort !== filters.sort ||
+      fromUrl.marca.join(',') !== filters.marca.join(',') ||
+      fromUrl.modelo.join(',') !== filters.modelo.join(',') ||
+      fromUrl.location.join(',') !== filters.location.join(',') ||
       fromUrl.cor.join(',') !== filters.cor.join(',') ||
       fromUrl.sourceName.join(',') !== filters.sourceName.join(',') ||
+      fromUrl.tipo.join(',') !== filters.tipo.join(',') ||
+      fromUrl.tipoDeMonta.join(',') !== filters.tipoDeMonta.join(',') ||
+      fromUrl.page !== filters.page ||
+      fromUrl.sort !== filters.sort ||
       fromUrl.anoMin !== filters.anoMin ||
       fromUrl.anoMax !== filters.anoMax ||
       fromUrl.precoMin !== filters.precoMin ||

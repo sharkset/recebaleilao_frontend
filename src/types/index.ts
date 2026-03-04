@@ -26,6 +26,7 @@ export interface Lot {
     fipeValor?: number;
     lanceAtual?: number;
     visitas?: number;
+    viewsCount?: number;
     organization?: string;
     statusRaw?: string;
     raw?: {

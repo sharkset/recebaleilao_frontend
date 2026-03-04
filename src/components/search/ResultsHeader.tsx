@@ -9,6 +9,9 @@ interface ResultsHeaderProps {
     onSortChange: (sort: string) => void;
     onViewModeChange: (mode: 'grid' | 'list') => void;
     onOpenFilters?: () => void; // for mobile drawer
+    title?: string;
+    hideFilterButton?: boolean;
+    extraActions?: React.ReactNode;
 }
 
 export default function ResultsHeader({
@@ -18,13 +21,16 @@ export default function ResultsHeader({
     onSortChange,
     onViewModeChange,
     onOpenFilters,
+    title = "Resultados da busca",
+    hideFilterButton = false,
+    extraActions,
 }: ResultsHeaderProps) {
     return (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Left */}
             <div className="flex items-center gap-3">
                 {/* Mobile filter button */}
-                {onOpenFilters && (
+                {(onOpenFilters && !hideFilterButton) && (
                     <button
                         onClick={onOpenFilters}
                         className="lg:hidden flex items-center gap-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold px-3 py-2 rounded-lg hover:border-emerald-500 hover:text-emerald-600 transition-colors"
@@ -34,7 +40,7 @@ export default function ResultsHeader({
                     </button>
                 )}
                 <div>
-                    <h1 className="text-lg font-bold text-gray-900 leading-tight">Resultados da busca</h1>
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight uppercase tracking-tight">{title}</h1>
                     <p className="text-sm text-gray-500 mt-0.5">
                         <span className="font-semibold text-gray-700">{total.toLocaleString('pt-BR')}</span> anúncios encontrados
                     </p>
@@ -43,6 +49,7 @@ export default function ResultsHeader({
 
             {/* Right: Sort + View toggle */}
             <div className="flex items-center gap-2 shrink-0">
+                {extraActions}
                 <select
                     aria-label="Ordenar por"
                     value={sort}

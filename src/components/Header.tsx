@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Menu, Search, User, LogOut, Settings, LayoutDashboard, Car, Calendar, Bell, Calculator, Heart, CreditCard, ChevronDown, MessageSquare, X } from 'lucide-react';
@@ -9,7 +9,10 @@ import { useSession, signOut } from 'next-auth/react';
 export default function Header() {
     const { data: session } = useSession();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [notifications, setNotifications] = useState<any[]>([]);
     const menuRef = useRef<HTMLDivElement>(null);
+    const notificationRef = useRef<HTMLDivElement>(null);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -17,14 +20,76 @@ export default function Header() {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setIsMenuOpen(false);
             }
+            if (notificationRef.current && !notificationRef.current.contains(e.target as Node)) {
+                setIsNotificationsOpen(false);
+            }
         };
-        if (isMenuOpen) document.addEventListener('mousedown', handler);
+        if (isMenuOpen || isNotificationsOpen) document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, [isMenuOpen]);
+    }, [isMenuOpen, isNotificationsOpen]);
 
     const router = useRouter();
     const searchParams = useSearchParams();
     const [searchValue, setSearchValue] = useState(searchParams.get('search') || '');
+
+    const [userImage, setUserImage] = useState<string | null>(null);
+
+    // Fetch user profile for latest image
+    const fetchProfile = useCallback(() => {
+        if (session?.user?.email) {
+            import('@/lib/api').then(m => {
+                m.default.get(`/auth/me?email=${encodeURIComponent(session.user!.email!)}`)
+                    .then(res => {
+                        const img = res.data?.user?.image;
+                        if (img) setUserImage(img);
+                    })
+                    .catch(() => { });
+            });
+        }
+    }, [session]);
+
+    useEffect(() => {
+        fetchProfile();
+    }, [fetchProfile]);
+
+    useEffect(() => {
+        window.addEventListener('profileUpdated', fetchProfile);
+        return () => window.removeEventListener('profileUpdated', fetchProfile);
+    }, [fetchProfile]);
+
+    // Fetch notifications
+    useEffect(() => {
+        if (session?.user?.email) {
+            import('@/lib/api').then(m => {
+                m.default.get(`/notifications?email=${encodeURIComponent(session.user!.email!)}`)
+                    .then(res => setNotifications(res.data?.notifications || []))
+                    .catch(() => { });
+            });
+        }
+    }, [session]);
+
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    const handleMarkAllAsRead = async () => {
+        if (!session?.user?.email) return;
+        try {
+            const api = (await import('@/lib/api')).default;
+            await api.post('/notifications/read-all', { email: session.user.email });
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        } catch (error) {
+            console.error('Error marking all as read:', error);
+        }
+    };
+
+    const handleMarkAsRead = async (id: string) => {
+        try {
+            const api = (await import('@/lib/api')).default;
+            await api.put(`/notifications/${id}/read`);
+            setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
 
     // Sync search value with URL params
     useEffect(() => {
@@ -88,8 +153,88 @@ export default function Header() {
                         </nav>
 
                         {session && (
-                            <div className="hidden sm:flex items-center gap-4 text-slate-400">
-                                <Bell className="w-5 h-5 cursor-pointer hover:text-emerald-500 transition-colors" />
+                            <div className="relative" ref={notificationRef}>
+                                <button
+                                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                                    className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors text-slate-400 hover:text-emerald-500"
+                                >
+                                    <Bell className="w-5 h-5" />
+                                    {unreadCount > 0 && (
+                                        <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-black flex items-center justify-center rounded-full ring-2 ring-white">
+                                            {unreadCount}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {isNotificationsOpen && (
+                                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200 z-50">
+                                        <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-slate-900">Notificações</span>
+                                                {unreadCount > 0 && (
+                                                    <span className="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{unreadCount}</span>
+                                                )}
+                                            </div>
+                                            {unreadCount > 0 && (
+                                                <button onClick={handleMarkAllAsRead} className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 uppercase tracking-wider">Lidas</button>
+                                            )}
+                                        </div>
+                                        <div className="max-h-96 overflow-y-auto">
+                                            {notifications.length === 0 ? (
+                                                <div className="p-10 text-center">
+                                                    <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                                                        <Bell className="w-6 h-6 text-slate-200" />
+                                                    </div>
+                                                    <p className="text-slate-400 text-sm font-medium">Nenhuma notificação</p>
+                                                </div>
+                                            ) : (
+                                                <div className="divide-y divide-slate-50">
+                                                    {notifications.map((n) => {
+                                                        const lotPath = n.metadata?.lotId || n.lotId || n.externalLotId;
+                                                        const auctionPath = n.metadata?.auctionId || n.auctionId || n.externalAuctionId || '0';
+                                                        const link = lotPath ? `/lots/${auctionPath}/${lotPath}` : null;
+
+                                                        return (
+                                                            <div
+                                                                key={n._id}
+                                                                onClick={() => {
+                                                                    if (!n.read) handleMarkAsRead(n._id);
+                                                                    if (link) {
+                                                                        setIsNotificationsOpen(false);
+                                                                        router.push(link);
+                                                                    }
+                                                                }}
+                                                                className="p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
+                                                            >
+                                                                <div className="flex gap-3">
+                                                                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-transparent' : 'bg-emerald-500'}`} />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="font-bold text-slate-800 text-sm">{n.title}</p>
+                                                                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
+                                                                        <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">
+                                                                            {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {notifications.length > 0 && (
+                                            <div className="p-4 bg-slate-50 border-t border-slate-100 italic text-center text-xs font-bold">
+                                                <Link
+                                                    href="/minha-conta?tab=notificacoes"
+                                                    onClick={() => setIsNotificationsOpen(false)}
+                                                    className="text-emerald-600 hover:text-emerald-700"
+                                                >
+                                                    Ver todas
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -103,8 +248,13 @@ export default function Header() {
                                         <span className="text-xs font-black text-slate-900">{session.user?.name}</span>
                                         <span className="text-[10px] font-bold text-emerald-500 uppercase">Assinar Pro</span>
                                     </div>
-                                    {session.user?.image ? (
-                                        <img src={session.user.image} alt="User" className="w-8 h-8 lg:w-10 lg:h-10 rounded-full border-2 border-white shadow-sm" />
+                                    {userImage ? (
+                                        <img
+                                            src={userImage}
+                                            alt="User"
+                                            className="w-8 h-8 lg:w-10 lg:h-10 rounded-full border-2 border-white shadow-sm object-cover"
+                                            onError={() => setUserImage(null)}
+                                        />
                                     ) : (
                                         <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold border-2 border-white shadow-sm text-xs lg:text-sm">
                                             {session.user?.name?.[0].toUpperCase()}
@@ -116,9 +266,18 @@ export default function Header() {
                                 {isMenuOpen && (
                                     <div className="absolute right-0 mt-3 w-72 bg-white rounded-3xl shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
                                         <div className="p-6 border-b border-slate-50 flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-black text-xl">
-                                                {session.user?.name?.[0].toUpperCase()}
-                                            </div>
+                                            {userImage ? (
+                                                <img
+                                                    src={userImage}
+                                                    alt="User"
+                                                    className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover"
+                                                    onError={() => setUserImage(null)}
+                                                />
+                                            ) : (
+                                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-black text-xl">
+                                                    {session.user?.name?.[0].toUpperCase()}
+                                                </div>
+                                            )}
                                             <div className="flex flex-col overflow-hidden">
                                                 <span className="font-black text-slate-900 truncate">{session.user?.name}</span>
                                                 <span className="text-xs text-slate-400 truncate">{session.user?.email}</span>
@@ -130,18 +289,12 @@ export default function Header() {
 
                                         <div className="p-2">
                                             <MenuLink href="/minha-conta" icon={<User className="w-4 h-4" />} title="Minha Conta" />
-                                            <MenuLink href="/dashboard" icon={<LayoutDashboard className="w-4 h-4" />} title="Início" />
-                                            <MenuLink href="/search" icon={<Search className="w-4 h-4" />} title="Buscar" />
 
                                             <div className="my-2 border-t border-slate-50" />
 
-                                            <MenuLink href="#" icon={<LayoutDashboard className="w-4 h-4" />} title="Dashboard" badge="Em breve" badgeColor="bg-amber-100 text-amber-600" />
                                             <MenuLink href="/search" icon={<Car className="w-4 h-4" />} title="Leilões" premium />
-                                            <MenuLink href="#" icon={<Calendar className="w-4 h-4" />} title="Calendário" premium />
-                                            <MenuLink href="/watchers" icon={<MessageSquare className="w-4 h-4" />} title="Notificações" premium />
-                                            <MenuLink href="#" icon={<Calculator className="w-4 h-4" />} title="Calculadora" premium />
-                                            <MenuLink href="#" icon={<Heart className="w-4 h-4" />} title="Favoritos" />
-                                            <MenuLink href="/plans" icon={<CreditCard className="w-4 h-4" />} title="Planos" badge="Assine já" badgeColor="bg-violet-100 text-violet-600" />
+                                            <MenuLink href="/calendar" icon={<Calendar className="w-4 h-4" />} title="Calendário" premium />
+                                            <MenuLink href="/minha-conta?tab=favoritos" icon={<Heart className="w-4 h-4" />} title="Favoritos" />
 
 
                                             <div className="my-2 border-t border-slate-50" />

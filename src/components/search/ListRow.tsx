@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, MapPin, Tag, ChevronLeft, ChevronRight, Clock, Eye } from 'lucide-react';
+import { Calendar, MapPin, Tag, ChevronLeft, ChevronRight, Clock, Eye, Heart } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Lot } from '@/types';
+import api from '@/lib/api';
 
 interface ListRowProps {
     lot: Lot;
@@ -20,7 +22,73 @@ function formatDate(dateString?: string) {
 }
 
 export default function ListRow({ lot }: ListRowProps) {
+    const { data: session } = useSession();
     const [imgIdx, setImgIdx] = useState(0);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [favoriteId, setFavoriteId] = useState<string | null>(null);
+    const [notifyFavorites, setNotifyFavorites] = useState(true);
+
+    useEffect(() => {
+        if (session?.user?.email) {
+            api.get(`/auth/me?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => setNotifyFavorites(res.data.user.preferences?.notifyFavorites ?? true))
+                .catch(() => { });
+        }
+    }, [session]);
+
+    // Initial check for favorite status
+    useEffect(() => {
+        if (session?.user?.email) {
+            api.get(`/favorites?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => {
+                    const fav = res.data.favorites.find((f: any) => f.lotId === String(lot.externalLotId || lot._id));
+                    if (fav) {
+                        setIsFavorite(true);
+                        setFavoriteId(fav._id);
+                    }
+                })
+                .catch(() => { });
+        }
+    }, [session, lot]);
+
+    const handleToggleFavorite = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!session?.user?.email) {
+            alert('Faça login para salvar favoritos');
+            return;
+        }
+
+        try {
+            if (isFavorite && favoriteId) {
+                await api.delete(`/favorites/${favoriteId}`);
+                setIsFavorite(false);
+                setFavoriteId(null);
+            } else {
+                const res = await api.post('/favorites', {
+                    email: session.user.email,
+                    userId: (session.user as any).id || session.user.email,
+                    lotId: String(lot.externalLotId || lot._id),
+                    auctionId: String(lot.auctionId || lot.raw?.auctionId || lot.externalAuctionId || 0),
+                    marca: lot.marca,
+                    modelo: lot.modelo,
+                    ano: `${lot.ano}/${lot.anoModelo}`,
+                    image: (lot.images && lot.images.length > 0) ? lot.images[0] : (lot.raw?.images?.[0])
+                });
+                setIsFavorite(true);
+                setFavoriteId(res.data.favorite._id);
+
+                if (notifyFavorites) {
+                    alert('Lote adicionado aos favoritos. Você receberá lembretes antes do leilão.');
+                } else {
+                    alert('Lote adicionado aos favoritos. Ative notificações na sua conta para receber lembretes.');
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
+        }
+    };
     let images = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
     if (lot.sourceName === 'receitafederal' && images.length > 1) {
         images = images.slice(1);
@@ -78,12 +146,24 @@ export default function ListRow({ lot }: ListRowProps) {
                         <span className="absolute top-1.5 left-1.5 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
                             {lot.sourceName || 'Leilão'}
                         </span>
+                        {/* Favorite Button */}
+                        <button
+                            onClick={handleToggleFavorite}
+                            className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-white/80 backdrop-blur-sm border border-slate-100 shadow-sm transition-all hover:scale-110 active:scale-95 z-10"
+                        >
+                            <Heart className={`w-3.5 h-3.5 transition-colors ${isFavorite ? 'fill-pink-500 text-pink-500' : 'text-slate-400'}`} />
+                        </button>
                     </>
                 ) : (
                     <div className="flex h-full w-full items-center justify-center text-gray-300 text-xs font-medium">
                         Sem imagem
                     </div>
                 )}
+                {/* View Counter Badge */}
+                <div className="absolute bottom-1.5 left-1.5 bg-black/40 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-white/10 z-10">
+                    <Eye className="w-2.5 h-2.5" />
+                    {(lot.viewsCount ?? lot.visitas ?? 0).toLocaleString()}
+                </div>
             </div>
 
             {/* Info — fills remaining space */}
@@ -105,12 +185,6 @@ export default function ListRow({ lot }: ListRowProps) {
                                 {lot.versao || '—'}
                             </p>
                         </div>
-                        {lot.visitas !== undefined && (
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 shrink-0 mt-0.5 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100" title="Quantidade de visitas">
-                                <Eye className="h-3 w-3 text-gray-400" />
-                                <span className="text-gray-600">{lot.visitas.toLocaleString()}</span>
-                            </div>
-                        )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-0.5">
                         <span className="flex items-center gap-1 text-[11px] text-gray-500" title={`Ano: ${lot.ano}/${lot.anoModelo}`}>
@@ -127,10 +201,10 @@ export default function ListRow({ lot }: ListRowProps) {
                                 <span className="truncate max-w-[120px]">{lot.location}</span>
                             </span>
                         )}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase tracking-tight">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        Termina: {formatDate(lot.endAt)}
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase tracking-tight ml-auto">
+                            <Clock className="h-3 w-3 shrink-0" />
+                            Termina: {formatDate(lot.endAt)}
+                        </div>
                     </div>
                 </div>
 

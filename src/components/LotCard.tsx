@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, MapPin, Tag, Tags, ChevronLeft, ChevronRight, Clock, Hash } from 'lucide-react';
+import { Calendar, MapPin, Tag, Tags, ChevronLeft, ChevronRight, Clock, Hash, Heart } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Lot } from '@/types';
+import api from '@/lib/api';
 
 interface LotCardProps {
     lot: Lot;
@@ -9,7 +11,58 @@ interface LotCardProps {
 }
 
 export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
+    const { data: session } = useSession();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [favoriteId, setFavoriteId] = useState<string | null>(null);
+
+    // Initial check for favorite status
+    useEffect(() => {
+        if (session?.user?.email) {
+            api.get(`/favorites?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => {
+                    const fav = res.data.favorites.find((f: any) => f.lotId === String(lot.externalLotId || lot._id));
+                    if (fav) {
+                        setIsFavorite(true);
+                        setFavoriteId(fav._id);
+                    }
+                })
+                .catch(() => { });
+        }
+    }, [session, lot]);
+
+    const handleToggleFavorite = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!session?.user?.email) {
+            alert('Faça login para salvar favoritos');
+            return;
+        }
+
+        try {
+            if (isFavorite && favoriteId) {
+                await api.delete(`/favorites/${favoriteId}`);
+                setIsFavorite(false);
+                setFavoriteId(null);
+            } else {
+                const res = await api.post('/favorites', {
+                    email: session.user.email,
+                    userId: (session.user as any).id || session.user.email,
+                    lotId: String(lot.externalLotId || lot._id),
+                    auctionId: String(lot.auctionId || lot.raw?.auctionId || lot.externalAuctionId || 0),
+                    marca: lot.marca,
+                    modelo: lot.modelo,
+                    ano: `${lot.ano}/${lot.anoModelo}`,
+                    image: (lot.images && lot.images.length > 0) ? lot.images[0] : (lot.raw?.images?.[0])
+                });
+                setIsFavorite(true);
+                setFavoriteId(res.data.favorite._id);
+            }
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
+        }
+    };
     const formattedTitle = `${lot.marca || ''} ${lot.modelo || ''} ${lot.versao || ''} ${lot.ano}/${lot.anoModelo}`.trim();
     let displayImages = (lot.images && lot.images.length > 0) ? lot.images : (lot.raw?.images || []);
     if (lot.sourceName === 'receitafederal' && displayImages.length > 1) {
@@ -95,6 +148,12 @@ export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
                             {lot.sourceName || 'Oportunidade'}
                         </span>
                     </div>
+                    <button
+                        onClick={handleToggleFavorite}
+                        className="absolute top-3 right-3 p-2 rounded-full bg-white/80 backdrop-blur-sm border border-slate-100 shadow-sm transition-all hover:scale-110 active:scale-95 z-10"
+                    >
+                        <Heart className={`w-5 h-5 transition-colors ${isFavorite ? 'fill-pink-500 text-pink-500' : 'text-slate-400'}`} />
+                    </button>
                 </div>
 
                 <div className="flex flex-1 flex-col p-5 justify-between bg-white">
@@ -137,7 +196,7 @@ export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
                             </span>
                         </div>
                         <Link
-                            href={`/lots/${lot.externalLotId}`}
+                            href={`/lots/${lot.auctionId || lot.raw?.auctionId || lot.externalAuctionId || 0}/${lot.externalLotId}`}
                             className="bg-emerald-600 text-white px-8 py-3 rounded-md text-sm font-bold transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-100 text-center active:scale-[0.98]"
                         >
                             VER DETALHES
@@ -188,6 +247,12 @@ export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
                         {lot.sourceName || 'Oportunidade'}
                     </span>
                 </div>
+                <button
+                    onClick={handleToggleFavorite}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm border border-slate-100 shadow-sm transition-all hover:scale-110 active:scale-95 z-10"
+                >
+                    <Heart className={`w-4 h-4 transition-colors ${isFavorite ? 'fill-pink-500 text-pink-500' : 'text-slate-400'}`} />
+                </button>
             </div>
 
             <div className="flex flex-1 flex-col p-4 bg-white">
@@ -218,7 +283,7 @@ export default function LotCard({ lot, viewMode = 'grid' }: LotCardProps) {
                     </div>
 
                     <Link
-                        href={`/lots/${lot.externalLotId}`}
+                        href={`/lots/${lot.auctionId || lot.raw?.auctionId || lot.externalAuctionId || 0}/${lot.externalLotId}`}
                         className="w-full text-center rounded-md bg-emerald-600 py-2 text-xs font-bold text-white transition-all hover:bg-emerald-700 active:scale-[0.98] uppercase tracking-wider"
                     >
                         Ver Detalhes

@@ -9,6 +9,7 @@ import {
     ChevronLeft, ChevronRight, X, Maximize2, Loader2, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import GridCard from '@/components/search/GridCard';
 
 interface AuctionData {
@@ -26,6 +27,18 @@ export default function LotDetailsPageCombined({ params }: { params: Promise<{ a
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [recommendedLots, setRecommendedLots] = useState<Lot[]>([]);
+    const { data: session } = useSession();
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [favoriteId, setFavoriteId] = useState<string | null>(null);
+    const [notifyFavorites, setNotifyFavorites] = useState(true);
+
+    useEffect(() => {
+        if (session?.user?.email) {
+            api.get(`/auth/me?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => setNotifyFavorites(res.data.user.preferences?.notifyFavorites ?? true))
+                .catch(() => { });
+        }
+    }, [session]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -40,6 +53,9 @@ export default function LotDetailsPageCombined({ params }: { params: Promise<{ a
 
                 // Record visit
                 api.post(`/lots/${queryPath}/visit`).catch(e => console.error("Visit recording failed", e));
+                if (lotData._id) {
+                    api.patch(`/lots/${lotData._id}/view`).catch(e => console.error("View increment failed", e));
+                }
 
                 // Secondary fetches
                 const fetchExtras = async () => {
@@ -106,6 +122,72 @@ export default function LotDetailsPageCombined({ params }: { params: Promise<{ a
         };
         fetchData();
     }, [auctionId, lotId]);
+
+    // Check favorite status
+    useEffect(() => {
+        if (session?.user?.email && lot) {
+            api.get(`/favorites?email=${encodeURIComponent(session.user.email)}`)
+                .then(res => {
+                    const fav = res.data.favorites.find((f: any) => f.lotId === String(lot.externalLotId || lot._id));
+                    if (fav) {
+                        setIsFavorite(true);
+                        setFavoriteId(fav._id);
+                    }
+                })
+                .catch(() => { });
+        }
+    }, [session, lot]);
+
+    const handleToggleFavorite = async () => {
+        if (!session?.user?.email) {
+            alert('Faça login para salvar favoritos');
+            return;
+        }
+
+        if (!lot) return;
+
+        try {
+            if (isFavorite && favoriteId) {
+                await api.delete(`/favorites/${favoriteId}`);
+                setIsFavorite(false);
+                setFavoriteId(null);
+            } else {
+                const res = await api.post('/favorites', {
+                    email: session.user.email,
+                    userId: (session.user as any).id || session.user.email,
+                    lotId: String(lot.externalLotId || lot._id),
+                    auctionId: String(lot.auctionId || lot.raw?.auctionId || lot.externalAuctionId || auctionId),
+                    marca: lot.marca,
+                    modelo: lot.modelo,
+                    ano: `${lot.ano}/${lot.anoModelo}`,
+                    image: (lot.images && lot.images.length > 0) ? lot.images[0] : (lot.raw?.images?.[0])
+                });
+                setIsFavorite(true);
+                setFavoriteId(res.data.favorite._id);
+
+                if (notifyFavorites) {
+                    alert('Lote adicionado aos favoritos. Você receberá lembretes antes do leilão.');
+                } else {
+                    alert('Lote adicionado aos favoritos. Ative notificações na sua conta para receber lembretes.');
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
+        }
+    };
+
+    const handleShare = () => {
+        if (navigator.share) {
+            navigator.share({
+                title: `${lot?.marca} ${lot?.modelo}`,
+                text: `Confira este lote no Receba Leilão: ${lot?.marca} ${lot?.modelo}`,
+                url: window.location.href,
+            }).catch(() => { });
+        } else {
+            navigator.clipboard.writeText(window.location.href);
+            alert('Link copiado para a área de transferência!');
+        }
+    };
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -250,13 +332,21 @@ export default function LotDetailsPageCombined({ params }: { params: Promise<{ a
                             <Eye className="h-4 w-4" /> <span>{lot.visitas?.toLocaleString() || '0'} visitas</span>
                         </div>
                         <div className="flex items-center gap-4">
-                            <button className="text-gray-300 hover:text-emerald-600 transition-colors flex items-center gap-2">
+                            <button
+                                onClick={handleShare}
+                                className="text-gray-300 hover:text-emerald-600 transition-colors flex items-center gap-2"
+                            >
                                 <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Compartilhar</span>
                                 <Share2 className="h-5 w-5" />
                             </button>
-                            <button className="text-gray-300 hover:text-emerald-600 transition-colors flex items-center gap-2">
-                                <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Favoritar</span>
-                                <Heart className="h-5 w-5" />
+                            <button
+                                onClick={handleToggleFavorite}
+                                className={`transition-colors flex items-center gap-2 ${isFavorite ? 'text-pink-500' : 'text-gray-300 hover:text-emerald-600'}`}
+                            >
+                                <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
+                                    {isFavorite ? 'Favoritado' : 'Favoritar'}
+                                </span>
+                                <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
                             </button>
                         </div>
                     </div>
