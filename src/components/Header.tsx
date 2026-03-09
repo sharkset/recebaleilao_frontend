@@ -151,6 +151,9 @@ export default function Header() {
                         <nav className="hidden xl:flex items-center gap-6 text-sm font-bold text-slate-500 uppercase tracking-widest mr-2">
                             <Link href="/search" className="hover:text-emerald-500 transition-colors">Leilões</Link>
                             <Link href="/plans" className="hover:text-emerald-500 transition-colors">Planos</Link>
+                            {session && (
+                                <Link href="/minha-conta?tab=alertas" className="hover:text-emerald-500 transition-colors">Alertas</Link>
+                            )}
                         </nav>
 
                         {session && (
@@ -303,6 +306,7 @@ export default function Header() {
                                             <div className="my-2 border-t border-slate-50" />
 
                                             <MenuLink href="/search" icon={<Car className="w-4 h-4" />} title="Leilões" premium />
+                                            <MenuLink href="/minha-conta?tab=alertas" icon={<Bell className="w-4 h-4" />} title="Alertas" />
                                             <MenuLink href="/calendar" icon={<Calendar className="w-4 h-4" />} title="Calendário" premium />
                                             <MenuLink href="/minha-conta?tab=favoritos" icon={<Heart className="w-4 h-4" />} title="Favoritos" />
 

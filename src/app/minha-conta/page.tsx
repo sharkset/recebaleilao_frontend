@@ -109,7 +109,7 @@ function MinhaContaContent() {
 
     // Profile state
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [profileForm, setProfileForm] = useState({ name: "", whatsapp: "", cpf: "", image: "" });
+    const [profileForm, setProfileForm] = useState({ name: "", email: "", whatsapp: "", cpf: "", image: "" });
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileSuccess, setProfileSuccess] = useState(false);
     const [profileErrors, setProfileErrors] = useState({ cpf: "", whatsapp: "" });
@@ -164,6 +164,7 @@ function MinhaContaContent() {
                     setProfile(u);
                     setProfileForm({
                         name: u.name || "",
+                        email: u.email || "",
                         whatsapp: u.whatsapp || "",
                         cpf: u.cpf ? formatCPF(u.cpf) : "",
                         image: u.image || ""
@@ -232,7 +233,7 @@ function MinhaContaContent() {
 
     // ── Save profile
     const handleSaveProfile = async () => {
-        if (!session?.user?.email) return;
+        if (!session?.user?.email || !profile) return;
 
         // Validation
         const isCPFValid = !profileForm.cpf || validateCPF(profileForm.cpf);
@@ -252,7 +253,8 @@ function MinhaContaContent() {
                 cpf: normalizeNumbers(profileForm.cpf),
                 whatsapp: profileForm.whatsapp // Already E.164 from InternationalPhoneInput
             };
-            await api.put("/auth/me", { email: session.user.email, ...dataToSave });
+            // Pass the original email as identifier and the form data (which includes the new email)
+            await api.put("/auth/me", { currentEmail: profile.email, ...dataToSave });
             setProfileSuccess(true);
             window.dispatchEvent(new Event('profileUpdated'));
             setTimeout(() => setProfileSuccess(false), 3000);
@@ -429,6 +431,22 @@ function MinhaContaContent() {
                         </div>
 
                         <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">E-mail <span className="text-red-500">*</span></label>
+                            <div className="relative">
+                                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="email"
+                                    value={profileForm.email}
+                                    onChange={e => setProfileForm(p => ({ ...p, email: e.target.value }))}
+                                    readOnly={!!profile?.email}
+                                    className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-medium focus:outline-none transition-all ${profile?.email ? 'opacity-60 cursor-not-allowed bg-slate-100' : 'focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
+                                    placeholder="seu@email.com"
+                                />
+                            </div>
+                            {profile?.email && <p className="text-[10px] text-slate-400 ml-1">O e-mail não pode ser alterado após o preenchimento.</p>}
+                        </div>
+
+                        <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">CPF <span className="text-red-500">*</span></label>
                             <p className="text-xs text-slate-400">Usado para emissão de nota fiscal</p>
                             <div className="relative">
@@ -437,12 +455,17 @@ function MinhaContaContent() {
                                     type="text"
                                     value={profileForm.cpf}
                                     onChange={e => setProfileForm(p => ({ ...p, cpf: formatCPF(e.target.value) }))}
-                                    className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 transition-all ${profileErrors.cpf ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
+                                    readOnly={!!profile?.cpf}
+                                    className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border rounded-2xl text-slate-800 font-medium focus:outline-none transition-all ${profile?.cpf ? 'opacity-60 cursor-not-allowed bg-slate-100 border-slate-200' : profileErrors.cpf ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
                                     placeholder="000.000.000-00"
                                     maxLength={14}
                                 />
                             </div>
-                            {profileErrors.cpf && <p className="text-[10px] text-red-500 font-bold ml-1">{profileErrors.cpf}</p>}
+                            {profile?.cpf ? (
+                                <p className="text-[10px] text-slate-400 ml-1">O CPF não pode ser alterado após o preenchimento.</p>
+                            ) : profileErrors.cpf && (
+                                <p className="text-[10px] text-red-500 font-bold ml-1">{profileErrors.cpf}</p>
+                            )}
                         </div>
 
                         <div className="space-y-1">
