@@ -426,7 +426,7 @@ export default function LotDetailsPageCombined({ params }: { params: Promise<{ a
                                 <div className="text-[11px] font-bold text-gray-400 uppercase mb-2">Lance atual do leilão</div>
                                 <div className="text-4xl font-black text-gray-900 tracking-tighter">
                                     <span className="text-xl font-medium mr-1 text-gray-400">R$</span>
-                                    {lot.precoMinimo ? lot.precoMinimo.toLocaleString('pt-BR') : 'N/A'}
+                                    {(lot.lanceAtual ?? lot.precoMinimo)?.toLocaleString('pt-BR') || 'N/A'}
                                 </div>
                             </div>
                             <a href={lot.lotUrl || lot.loteUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-3 rounded-lg bg-[#ef3e42] py-4 text-sm font-bold text-white hover:bg-[#d63438] transition-all shadow-lg shadow-red-100 uppercase active:scale-[0.98]">

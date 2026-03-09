@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import FipeSelector from "@/components/FipeSelector";
+import InternationalPhoneInput from "@/components/InternationalPhoneInput";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import { formatCPF, validateCPF, formatPhoneBR, validatePhoneBR, normalizeNumbers } from "@/lib/brazilianUtils";
+import { getLotDetailsUrl, getNotificationContent } from "@/lib/notificationUtils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +25,7 @@ interface UserProfile {
     whatsapp?: string;
     cpf?: string;
     role: string;
-    preferences?: { 
+    preferences?: {
         receivePromotions: boolean;
         notifyFavorites: boolean;
     };
@@ -112,9 +115,9 @@ function MinhaContaContent() {
     const [profileErrors, setProfileErrors] = useState({ cpf: "", whatsapp: "" });
 
     // Preferences
-    const [preferences, setPreferences] = useState({ 
+    const [preferences, setPreferences] = useState({
         receivePromotions: true,
-        notifyFavorites: true 
+        notifyFavorites: true
     });
     const [savingPrefs, setSavingPrefs] = useState(false);
 
@@ -159,11 +162,11 @@ function MinhaContaContent() {
                 .then(res => {
                     const u = res.data.user;
                     setProfile(u);
-                    setProfileForm({ 
-                        name: u.name || "", 
-                        whatsapp: u.whatsapp ? formatPhoneBR(u.whatsapp) : "", 
-                        cpf: u.cpf ? formatCPF(u.cpf) : "", 
-                        image: u.image || "" 
+                    setProfileForm({
+                        name: u.name || "",
+                        whatsapp: u.whatsapp || "",
+                        cpf: u.cpf ? formatCPF(u.cpf) : "",
+                        image: u.image || ""
                     });
                     setPreferences({
                         receivePromotions: u.preferences?.receivePromotions ?? true,
@@ -233,11 +236,11 @@ function MinhaContaContent() {
 
         // Validation
         const isCPFValid = !profileForm.cpf || validateCPF(profileForm.cpf);
-        const isWhatsappValid = !profileForm.whatsapp || validatePhoneBR(profileForm.whatsapp);
+        const isWhatsappValid = !profileForm.whatsapp || isValidPhoneNumber(profileForm.whatsapp);
 
         setProfileErrors({
             cpf: isCPFValid ? "" : "CPF inválido",
-            whatsapp: isWhatsappValid ? "" : "Número inválido. Use formato celular com DDD."
+            whatsapp: isWhatsappValid ? "" : "Número inválido para o país selecionado."
         });
 
         if (!isCPFValid || !isWhatsappValid) return;
@@ -247,9 +250,7 @@ function MinhaContaContent() {
             const dataToSave = {
                 ...profileForm,
                 cpf: normalizeNumbers(profileForm.cpf),
-                whatsapp: normalizeNumbers(profileForm.whatsapp).startsWith("55") 
-                    ? normalizeNumbers(profileForm.whatsapp) 
-                    : `55${normalizeNumbers(profileForm.whatsapp)}`
+                whatsapp: profileForm.whatsapp // Already E.164 from InternationalPhoneInput
             };
             await api.put("/auth/me", { email: session.user.email, ...dataToSave });
             setProfileSuccess(true);
@@ -447,27 +448,11 @@ function MinhaContaContent() {
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">WhatsApp <span className="text-red-500">*</span></label>
                             <p className="text-xs text-slate-400">Para receber alertas de leilão em tempo real</p>
-                            <div className="flex gap-2">
-                                <div className="flex items-center gap-1.5 px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-600 font-bold text-sm shrink-0">
-                                    🇧🇷 +55
-                                </div>
-                                <div className="relative flex-1">
-                                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="tel"
-                                        value={profileForm.whatsapp}
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            // Only apply mask if it doesn't already have +55 and enough digits
-                                            setProfileForm(p => ({ ...p, whatsapp: formatPhoneBR(val) }));
-                                        }}
-                                        className={`w-full pl-11 pr-4 py-3.5 bg-slate-50 border rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-2 transition-all ${profileErrors.whatsapp ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'}`}
-                                        placeholder="(11) 99999-9999"
-                                        maxLength={19}
-                                    />
-                                </div>
-                            </div>
-                            {profileErrors.whatsapp && <p className="text-[10px] text-red-500 font-bold ml-1">{profileErrors.whatsapp}</p>}
+                            <InternationalPhoneInput
+                                value={profileForm.whatsapp}
+                                onChange={val => setProfileForm(p => ({ ...p, whatsapp: val || "" }))}
+                                error={profileErrors.whatsapp}
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -794,9 +779,8 @@ function MinhaContaContent() {
                             ) : (
                                 <ul className="divide-y divide-slate-50">
                                     {notifications.map(n => {
-                                        const lotId = n.metadata?.lotId || n.lotId || n.externalLotId;
-                                        const auctionId = n.metadata?.auctionId || n.auctionId || n.externalAuctionId || '0';
-                                        const link = lotId ? `/lots/${auctionId}/${lotId}` : null;
+                                        const link = getLotDetailsUrl(n);
+                                        const { isAlert, lotTitle, subtext } = getNotificationContent(n);
 
                                         return (
                                             <li
@@ -804,7 +788,13 @@ function MinhaContaContent() {
                                                 className={`p-5 hover:bg-slate-50 transition-colors cursor-pointer group flex items-start gap-4 ${!n.read ? 'bg-emerald-50/30' : ''}`}
                                                 onClick={() => {
                                                     if (!n.read) handleMarkAsRead(n._id);
-                                                    if (link) router.push(link);
+                                                    if (link) {
+                                                        if (link.startsWith('http')) {
+                                                            window.open(link, '_blank');
+                                                        } else {
+                                                            router.push(link);
+                                                        }
+                                                    }
                                                 }}
                                             >
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${!n.read ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
@@ -817,11 +807,16 @@ function MinhaContaContent() {
                                                             {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     </div>
-                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{n.message}</p>
-                                                    {link && (
-                                                        <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline">
-                                                            Ver detalhes do lote <ChevronRight className="w-3 h-3" />
-                                                        </span>
+
+                                                    {isAlert && lotTitle ? (
+                                                        <div className="mt-1">
+                                                            <p className="text-sm text-emerald-600 font-black hover:underline decoration-emerald-600/30 underline-offset-2">
+                                                                {lotTitle}
+                                                            </p>
+                                                            {subtext && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{subtext}</p>}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{n.message}</p>
                                                     )}
                                                 </div>
                                                 {!n.read && <div className="w-2 h-2 rounded-full bg-emerald-500 mt-2 shrink-0" />}
@@ -852,7 +847,7 @@ function MinhaContaContent() {
                                     <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${preferences.receivePromotions ? 'translate-x-5' : ''}`} />
                                 </div>
                             </div>
-                            
+
                             <div className="flex items-start justify-between p-4">
                                 <div className="flex-1 pr-4">
                                     <div className="flex items-center gap-2">

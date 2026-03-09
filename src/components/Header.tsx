@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Menu, Search, User, LogOut, Settings, LayoutDashboard, Car, Calendar, Bell, Calculator, Heart, CreditCard, ChevronDown, MessageSquare, X } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
+import { getLotDetailsUrl, getNotificationContent } from '@/lib/notificationUtils';
 
 export default function Header() {
     const { data: session } = useSession();
@@ -190,9 +191,8 @@ export default function Header() {
                                             ) : (
                                                 <div className="divide-y divide-slate-50">
                                                     {notifications.map((n) => {
-                                                        const lotPath = n.metadata?.lotId || n.lotId || n.externalLotId;
-                                                        const auctionPath = n.metadata?.auctionId || n.auctionId || n.externalAuctionId || '0';
-                                                        const link = lotPath ? `/lots/${auctionPath}/${lotPath}` : null;
+                                                        const link = getLotDetailsUrl(n);
+                                                        const { isAlert, lotTitle } = getNotificationContent(n);
 
                                                         return (
                                                             <div
@@ -201,7 +201,11 @@ export default function Header() {
                                                                     if (!n.read) handleMarkAsRead(n._id);
                                                                     if (link) {
                                                                         setIsNotificationsOpen(false);
-                                                                        router.push(link);
+                                                                        if (link.startsWith('http')) {
+                                                                            window.open(link, '_blank');
+                                                                        } else {
+                                                                            router.push(link);
+                                                                        }
                                                                     }
                                                                 }}
                                                                 className="p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
@@ -210,7 +214,13 @@ export default function Header() {
                                                                     <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-transparent' : 'bg-emerald-500'}`} />
                                                                     <div className="flex-1 min-w-0">
                                                                         <p className="font-bold text-slate-800 text-sm">{n.title}</p>
-                                                                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
+                                                                        {isAlert && lotTitle ? (
+                                                                            <p className="text-xs text-emerald-600 font-bold mt-1 hover:underline decoration-emerald-600/30 underline-offset-2">
+                                                                                {lotTitle}
+                                                                            </p>
+                                                                        ) : (
+                                                                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
+                                                                        )}
                                                                         <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">
                                                                             {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                                         </p>
