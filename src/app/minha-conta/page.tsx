@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
     User, Settings, CreditCard, MessageSquare, Bell, LogOut,
     Save, Loader2, CheckCircle, Plus, Trash2, ChevronRight,
-    Phone, FileText, AlertCircle, Crown, Calendar, Zap, Pencil, Heart
+    Phone, FileText, AlertCircle, Crown, Calendar, Zap, Pencil, Heart,
+    ShieldCheck, ShieldAlert, RefreshCw
 } from "lucide-react";
 import api from "@/lib/api";
 import FipeSelector from "@/components/FipeSelector";
@@ -31,6 +32,9 @@ interface UserProfile {
         receivePromotions: boolean;
         notifyFavorites: boolean;
     };
+    whatsappNumber?: string;
+    whatsappVerifiedAt?: string;
+    whatsappVerificationStatus?: 'unverified' | 'pending' | 'verified';
 }
 
 interface WhatsAppAlert {
@@ -147,7 +151,16 @@ function MinhaContaContent() {
     const [favorites, setFavorites] = useState<Favorite[]>([]);
     const [loadingFavorites, setLoadingFavorites] = useState(false);
 
-    // Notifications
+    // WhatsApp Verification state
+    const [wvStatus, setWvStatus] = useState<'not_started' | 'waiting_user_message' | 'pending_code_confirmation' | 'verified'>('not_started');
+    const [wvCode, setWvCode] = useState('');
+    const [wvLoading, setWvLoading] = useState(false);
+    const [wvError, setWvError] = useState('');
+    const [wvSuccess, setWvSuccess] = useState('');
+    const [wvCooldown, setWvCooldown] = useState(0);
+    const [wvVerifiedAt, setWvVerifiedAt] = useState<string | null>(null);
+    const [wvWaLink, setWvWaLink] = useState<string | null>(null);
+
     const [notifications, setNotifications] = useState<any[]>([]);
     const [loadingNotifications, setLoadingNotifications] = useState(false);
 
@@ -176,6 +189,9 @@ function MinhaContaContent() {
                         receivePromotions: u.preferences?.receivePromotions ?? true,
                         notifyFavorites: u.preferences?.notifyFavorites ?? true
                     });
+                    // Sync WhatsApp verification state
+                    setWvStatus((u.whatsappVerificationStatus ?? 'not_started') as any);
+                    setWvVerifiedAt(u.whatsappVerifiedAt || null);
                 })
                 .catch(() => { });
         }
@@ -492,6 +508,179 @@ function MinhaContaContent() {
                             />
                         </div>
 
+                        {/* ── WhatsApp Verification Block — 4-step flow ── */}
+                        <div className={`rounded-2xl border p-4 space-y-3 transition-all
+                            ${wvStatus === 'verified' ? 'bg-emerald-50 border-emerald-200'
+                                : wvStatus === 'pending_code_confirmation' ? 'bg-amber-50 border-amber-200'
+                                    : wvStatus === 'waiting_user_message' ? 'bg-blue-50 border-blue-200'
+                                        : 'bg-slate-50 border-slate-200'}`}>
+
+                            {/* Header */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    {wvStatus === 'verified'
+                                        ? <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                                        : <ShieldAlert className="w-4 h-4 text-amber-500" />}
+                                    <span className="text-xs font-bold text-slate-700">
+                                        {wvStatus === 'verified' ? 'WhatsApp verificado'
+                                            : wvStatus === 'pending_code_confirmation' ? 'Insira o código recebido'
+                                                : wvStatus === 'waiting_user_message' ? 'Aguardando sua mensagem'
+                                                    : 'WhatsApp não verificado'}
+                                    </span>
+                                </div>
+                                {wvStatus === 'verified' && wvVerifiedAt && (
+                                    <span className="text-[10px] text-emerald-600 font-semibold">
+                                        {new Date(wvVerifiedAt).toLocaleDateString('pt-BR')}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* ── State: not_started ── */}
+                            {wvStatus === 'not_started' && (
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs text-slate-500">
+                                        {profileForm.whatsapp
+                                            ? 'Clique em "Iniciar verificação" para receber as instruções.'
+                                            : <span className="italic text-slate-400">Preencha o campo WhatsApp acima primeiro.</span>}
+                                    </p>
+                                    <button
+                                        disabled={wvLoading || !profileForm.whatsapp}
+                                        onClick={async () => {
+                                            setWvLoading(true); setWvError('');
+                                            try {
+                                                const res = await api.post('/whatsapp-verification/start', {
+                                                    email: session?.user?.email,
+                                                    whatsappNumber: profileForm.whatsapp,
+                                                });
+                                                setWvStatus('waiting_user_message');
+                                                setWvWaLink(res.data.waLink ?? null);
+                                            } catch (e: any) {
+                                                setWvError(e?.response?.data?.message || 'Erro ao iniciar.');
+                                            } finally { setWvLoading(false); }
+                                        }}
+                                        className="shrink-0 px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
+                                    >
+                                        {wvLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Iniciar verificação'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* ── State: waiting_user_message ── */}
+                            {wvStatus === 'waiting_user_message' && (
+                                <div className="space-y-3">
+                                    <div className="bg-white rounded-xl border border-blue-200 p-3 space-y-2">
+                                        <p className="text-xs font-bold text-blue-800">Passo 1 de 2 — Envie uma mensagem para nosso número oficial</p>
+                                        <p className="text-xs text-blue-700">
+                                            Mande qualquer mensagem para o nosso WhatsApp. Isso confirma que você tem acesso ao número informado e nos autoriza a enviar o código.
+                                        </p>
+                                        {wvWaLink && (
+                                            <a
+                                                href={wvWaLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all"
+                                            >
+                                                Abrir WhatsApp
+                                            </a>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-xs text-slate-500">Depois de enviar a mensagem, clique em "Enviar código".</p>
+                                        <button
+                                            disabled={wvLoading || wvCooldown > 0}
+                                            onClick={async () => {
+                                                setWvLoading(true); setWvError(''); setWvSuccess('');
+                                                try {
+                                                    await api.post('/whatsapp-verification/send-code', {
+                                                        email: session?.user?.email,
+                                                    });
+                                                    setWvStatus('pending_code_confirmation');
+                                                    setWvSuccess('Código enviado!');
+                                                    setWvCooldown(60);
+                                                    const iv = setInterval(() => setWvCooldown(c => { if (c <= 1) { clearInterval(iv); return 0; } return c - 1; }), 1000);
+                                                } catch (e: any) {
+                                                    setWvError(e?.response?.data?.message || 'Erro ao enviar código.');
+                                                } finally { setWvLoading(false); }
+                                            }}
+                                            className="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
+                                        >
+                                            {wvLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar código'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── State: pending_code_confirmation ── */}
+                            {wvStatus === 'pending_code_confirmation' && (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-slate-500">Passo 2 de 2 — Digite o código de 6 dígitos enviado para seu WhatsApp.</p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            placeholder="000000"
+                                            value={wvCode}
+                                            onChange={e => setWvCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                            className="flex-1 px-3 py-2.5 bg-white border border-amber-300 rounded-xl text-sm font-mono font-bold text-center text-slate-800 tracking-widest placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
+                                        />
+                                        <button
+                                            disabled={wvLoading || wvCode.length !== 6}
+                                            onClick={async () => {
+                                                setWvLoading(true); setWvError(''); setWvSuccess('');
+                                                try {
+                                                    await api.post('/whatsapp-verification/confirm', {
+                                                        email: session?.user?.email,
+                                                        code: wvCode,
+                                                    });
+                                                    setWvStatus('verified');
+                                                    setWvVerifiedAt(new Date().toISOString());
+                                                    setWvCode('');
+                                                } catch (e: any) {
+                                                    setWvError(e?.response?.data?.message || 'Código inválido.');
+                                                } finally { setWvLoading(false); }
+                                            }}
+                                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
+                                        >
+                                            {wvLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar'}
+                                        </button>
+                                    </div>
+                                    <button
+                                        disabled={wvCooldown > 0 || wvLoading}
+                                        onClick={async () => {
+                                            setWvLoading(true); setWvError('');
+                                            try {
+                                                await api.post('/whatsapp-verification/send-code', { email: session?.user?.email });
+                                                setWvSuccess('Novo código enviado.');
+                                                setWvCooldown(60);
+                                                const iv = setInterval(() => setWvCooldown(c => { if (c <= 1) { clearInterval(iv); return 0; } return c - 1; }), 1000);
+                                            } catch (e: any) {
+                                                setWvError(e?.response?.data?.message || 'Erro ao reenviar.');
+                                            } finally { setWvLoading(false); }
+                                        }}
+                                        className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition-colors"
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        {wvCooldown > 0 ? `Reenviar em ${wvCooldown}s` : 'Reenviar código'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* ── State: verified ── */}
+                            {wvStatus === 'verified' && (
+                                <button
+                                    onClick={() => { setWvStatus('not_started'); setWvCode(''); setWvError(''); setWvSuccess(''); setWvWaLink(null); }}
+                                    className="text-[11px] font-bold text-slate-400 hover:text-emerald-600 transition-colors"
+                                >
+                                    Alterar número
+                                </button>
+                            )}
+
+                            {/* Feedback */}
+                            {wvError && <p className="text-[11px] text-red-500 font-bold">{wvError}</p>}
+                            {wvSuccess && <p className="text-[11px] text-emerald-600 font-bold">{wvSuccess}</p>}
+                        </div>
+
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Foto do perfil</label>
                             <p className="text-xs text-slate-400">Insira a URL de uma imagem para o seu perfil</p>
@@ -586,15 +775,31 @@ function MinhaContaContent() {
                                     {/* Canais de notificação */}
                                     <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
                                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Receber alerta via</p>
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <div
-                                                onClick={() => setAlertForm(p => ({ ...p, notifyWhatsApp: !p.notifyWhatsApp }))}
-                                                className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${alertForm.notifyWhatsApp ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                                            >
-                                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${alertForm.notifyWhatsApp ? 'translate-x-4' : ''}`} />
+                                        {/* WhatsApp toggle — locked if not verified */}
+                                        {wvStatus === 'verified' ? (
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <div
+                                                    onClick={() => setAlertForm(p => ({ ...p, notifyWhatsApp: !p.notifyWhatsApp }))}
+                                                    className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${alertForm.notifyWhatsApp ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                                >
+                                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${alertForm.notifyWhatsApp ? 'translate-x-4' : ''}`} />
+                                                </div>
+                                                <span className="text-sm font-medium text-slate-700">WhatsApp</span>
+                                            </label>
+                                        ) : (
+                                            <div className="flex items-start gap-2">
+                                                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                                <p className="text-xs text-amber-700">
+                                                    Verifique seu número de WhatsApp em{' '}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveTab('conta')}
+                                                        className="font-bold underline hover:text-amber-900 transition-colors"
+                                                    >Minha Conta</button>
+                                                    {' '}para ativar alertas via WhatsApp.
+                                                </p>
                                             </div>
-                                            <span className="text-sm font-medium text-slate-700">WhatsApp</span>
-                                        </label>
+                                        )}
                                         <label className="flex items-center gap-3 cursor-pointer">
                                             <div
                                                 onClick={() => setAlertForm(p => ({ ...p, notifyEmail: !p.notifyEmail }))}
@@ -984,7 +1189,7 @@ function MinhaContaContent() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }
 
