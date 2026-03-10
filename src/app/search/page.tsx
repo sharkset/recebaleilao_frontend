@@ -9,6 +9,7 @@ import SkeletonCard from '@/components/search/SkeletonCard';
 import ActiveFilterChips from '@/components/search/ActiveFilterChips';
 import ResultsHeader from '@/components/search/ResultsHeader';
 import api from '@/lib/api';
+import { useRole } from '@/hooks/useRole';
 import { Search as SearchIcon, AlertCircle } from 'lucide-react';
 
 // ─── Default filter state ────────────────────────────────────────────────────
@@ -78,6 +79,8 @@ const GRID_COLS = 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5';
 function SearchPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { role } = useRole();
+  const isCommon = role === 'common';
 
   const [filters, setFilters] = useState<Filters>(() => paramsToFilters(searchParams));
   const [lots, setLots] = useState<any[]>([]);
@@ -224,6 +227,7 @@ function SearchPageInner() {
                 onChange={handleFilterChange}
                 onApply={handleApply}
                 onReset={handleReset}
+                isCommon={isCommon}
               />
             </div>
           </aside>
@@ -266,6 +270,7 @@ function SearchPageInner() {
                       onApply={handleApply}
                       onReset={handleReset}
                       horizontal
+                      isCommon={isCommon}
                     />
                   </div>
                 </div>

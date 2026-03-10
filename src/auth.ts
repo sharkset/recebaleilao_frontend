@@ -63,6 +63,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 token.name = user.name;
                 token.picture = user.image;
             }
+            // Always fetch fresh role from DB so role changes reflect without re-login
+            if (token.email) {
+                try {
+                    const client = await clientPromise;
+                    const db = client.db();
+                    const dbUser = await db.collection('users').findOne({ email: token.email });
+                    token.role = dbUser?.role ?? 'common';
+                } catch {
+                    token.role = token.role ?? 'common';
+                }
+            }
             return token;
         },
         async session({ session, token }) {
@@ -72,6 +83,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 session.user.email = token.email as string;
                 session.user.name = token.name as string;
                 session.user.image = token.picture as string | null;
+                // @ts-ignore
+                session.user.role = token.role as string;
             }
             return session;
         },

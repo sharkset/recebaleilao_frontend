@@ -11,6 +11,8 @@ import {
 import api from "@/lib/api";
 import FipeSelector from "@/components/FipeSelector";
 import InternationalPhoneInput from "@/components/InternationalPhoneInput";
+import { RoleGuard } from "@/components/RoleGuard";
+import { useRole } from "@/hooks/useRole";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { formatCPF, validateCPF, formatPhoneBR, validatePhoneBR, normalizeNumbers } from "@/lib/brazilianUtils";
 import { getLotDetailsUrl, getNotificationContent } from "@/lib/notificationUtils";
@@ -95,6 +97,7 @@ function TabButton({ id, active, icon, label, onClick }: {
 
 function MinhaContaContent() {
     const { data: session, status } = useSession();
+    const { role } = useRole();
     const router = useRouter();
     const searchParams = useSearchParams();
     const [activeTab, setActiveTab] = useState<Tab>("conta");
@@ -127,7 +130,7 @@ function MinhaContaContent() {
     const [showAlertForm, setShowAlertForm] = useState(false);
     const [alertForm, setAlertForm] = useState({
         keywords: "",
-        brand: "", model: "", version: "", color: "",
+        color: "",
         minYear: "", maxYear: "",
         minPrice: "", maxPrice: "",
         category: "", location: "",
@@ -277,9 +280,6 @@ function MinhaContaContent() {
         setEditingAlertId(alert._id);
         setAlertForm({
             keywords: alert.keywords || "",
-            brand: alert.brand || "",
-            model: alert.vehicleModel || "",
-            version: alert.version || "",
             color: alert.color || "",
             minYear: alert.minYear ? String(alert.minYear) : "",
             maxYear: alert.maxYear ? String(alert.maxYear) : "",
@@ -300,9 +300,6 @@ function MinhaContaContent() {
         const payload = {
             email: session.user.email,
             keywords: alertForm.keywords || undefined,
-            brand: alertForm.brand || undefined,
-            vehicleModel: alertForm.model || undefined, // Changed to vehicleModel for API
-            version: alertForm.version || undefined,
             color: alertForm.color || undefined,
             minYear: alertForm.minYear ? Number(alertForm.minYear) : undefined,
             maxYear: alertForm.maxYear ? Number(alertForm.maxYear) : undefined,
@@ -320,7 +317,7 @@ function MinhaContaContent() {
                 await api.post("/watchers", payload);
             }
             setAlertForm({
-                keywords: "", brand: "", model: "", version: "", color: "",
+                keywords: "", color: "",
                 minYear: "", maxYear: "", minPrice: "", maxPrice: "",
                 category: "", location: "", notifyWhatsApp: true, notifyEmail: false,
             });
@@ -384,9 +381,16 @@ function MinhaContaContent() {
                         <div>
                             <h1 className="text-2xl font-black text-slate-900">{profile.name}</h1>
                             <p className="text-slate-400 text-sm">{profile.email}</p>
-                            <span className="inline-flex items-center gap-1 mt-1 bg-amber-100 text-amber-700 text-xs font-black px-2 py-0.5 rounded-full uppercase tracking-wide">
-                                <Crown className="w-3 h-3" /> Plano Gratuito
-                            </span>
+                            {(() => {
+                                const r = role as 'common' | 'pro' | 'affiliate' | 'admin';
+                                const planColor = { common: 'bg-amber-100 text-amber-700', pro: 'bg-emerald-100 text-emerald-700', affiliate: 'bg-blue-100 text-blue-700', admin: 'bg-purple-100 text-purple-700' }[r] ?? 'bg-amber-100 text-amber-700';
+                                const planName = { common: 'Plano Gratuito', pro: 'Plano Pro', affiliate: 'Plano Afiliado', admin: 'Administrador' }[r] ?? 'Plano Gratuito';
+                                return (
+                                    <span className={`inline-flex items-center gap-1 mt-1 text-xs font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${planColor}`}>
+                                        <Crown className="w-3 h-3" /> {planName}
+                                    </span>
+                                );
+                            })()}
                         </div>
                         <button
                             onClick={() => signOut({ callbackUrl: "/" })}
@@ -415,6 +419,16 @@ function MinhaContaContent() {
                 {activeTab === "conta" && (
                     <div className="bg-white rounded-3xl shadow-sm shadow-slate-100 border border-slate-100 p-6 space-y-5">
                         <h2 className="text-lg font-black text-slate-900">Dados da conta</h2>
+
+                        <RoleGuard allowedRoles={['admin']}>
+                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+                                <Zap className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-amber-900 text-sm font-bold">Painel de Administrador</p>
+                                    <p className="text-amber-700 text-xs mt-0.5">Este aviso é visível apenas para usuários com a role "admin".</p>
+                                </div>
+                            </div>
+                        </RoleGuard>
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nome <span className="text-red-500">*</span></label>
@@ -523,7 +537,7 @@ function MinhaContaContent() {
                             <div className="flex items-center justify-between p-5 border-b border-slate-50">
                                 <h2 className="font-black text-slate-900">Meus alertas</h2>
                                 <button
-                                    onClick={() => { setEditingAlertId(null); setAlertForm({ keywords: "", brand: "", model: "", version: "", color: "", minYear: "", maxYear: "", minPrice: "", maxPrice: "", category: "", location: "", notifyWhatsApp: true, notifyEmail: false }); setShowAlertForm(v => !v); }}
+                                    onClick={() => { setEditingAlertId(null); setAlertForm({ keywords: "", color: "", minYear: "", maxYear: "", minPrice: "", maxPrice: "", category: "", location: "", notifyWhatsApp: true, notifyEmail: false }); setShowAlertForm(v => !v); }}
                                     className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-4 py-2 rounded-xl transition-all shadow-sm"
                                 >
                                     <Plus className="w-4 h-4" /> Novo alerta
@@ -544,18 +558,6 @@ function MinhaContaContent() {
                                         placeholder="Palavras-chave (ex: Honda Civic, SUV, Toyota)"
                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-all"
                                     />
-
-                                    {/* Marca / Modelo via FIPE API */}
-                                    <FipeSelector
-                                        vehicleType="carros"
-                                        brandValue={alertForm.brand}
-                                        modelValue={alertForm.model}
-                                        onBrandChange={v => setAlertForm(p => ({ ...p, brand: v }))}
-                                        onModelChange={v => setAlertForm(p => ({ ...p, model: v }))}
-                                    />
-
-                                    {/* Versão */}
-                                    <input value={alertForm.version} onChange={e => setAlertForm(p => ({ ...p, version: e.target.value }))} placeholder="Versão (ex: 1.0 EX, LX, Touring)" className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-all" />
 
                                     {/* Cor / Localização */}
                                     <div className="grid grid-cols-2 gap-2">
@@ -607,7 +609,7 @@ function MinhaContaContent() {
                                     <div className="flex gap-2 pt-1">
                                         <button
                                             onClick={handleCreateAlert}
-                                            disabled={savingAlert || (!alertForm.keywords && !alertForm.brand && !alertForm.model)}
+                                            disabled={savingAlert || (!alertForm.keywords && !alertForm.location && !alertForm.category && !alertForm.minPrice && !alertForm.maxPrice)}
                                             className="flex items-center gap-2 bg-emerald-500 text-white font-bold text-sm px-5 py-2.5 rounded-xl disabled:opacity-50 transition-all"
                                         >
                                             {savingAlert ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}

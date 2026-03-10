@@ -5,10 +5,22 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Menu, Search, User, LogOut, Settings, LayoutDashboard, Car, Calendar, Bell, Calculator, Heart, CreditCard, ChevronDown, MessageSquare, X } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
+import { useRole } from '@/hooks/useRole';
 import { getLotDetailsUrl, getNotificationContent } from '@/lib/notificationUtils';
 
 export default function Header() {
     const { data: session } = useSession();
+    const { role } = useRole();
+
+    const planLabel: Record<string, string> = {
+        common: 'Assinar Pro',
+        pro: 'Plano Pro',
+        affiliate: 'Plano Afiliado',
+        admin: 'Administrador',
+    };
+    const currentPlanLabel = planLabel[role] ?? 'Assinar Pro';
+    const isCommon = role === 'common';
+
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -150,7 +162,9 @@ export default function Header() {
                     <div className="flex items-center gap-3 lg:gap-6 shrink-0">
                         <nav className="hidden xl:flex items-center gap-6 text-sm font-bold text-slate-500 uppercase tracking-widest mr-2">
                             <Link href="/search" className="hover:text-emerald-500 transition-colors">Leilões</Link>
-                            <Link href="/plans" className="hover:text-emerald-500 transition-colors">Planos</Link>
+                            {isCommon && (
+                                <Link href="/plans" className="hover:text-emerald-500 transition-colors">Planos</Link>
+                            )}
                             {session && (
                                 <Link href="/minha-conta?tab=alertas" className="hover:text-emerald-500 transition-colors">Alertas</Link>
                             )}
@@ -259,7 +273,9 @@ export default function Header() {
                                 >
                                     <div className="hidden lg:flex flex-col items-end mr-1">
                                         <span className="text-xs font-black text-slate-900">{session.user?.name}</span>
-                                        <span className="text-[10px] font-bold text-emerald-500 uppercase">Assinar Pro</span>
+                                        <span className={`text-[10px] font-bold uppercase ${isCommon ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                            {currentPlanLabel}
+                                        </span>
                                     </div>
                                     {userImage ? (
                                         <img

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    Search, RotateCcw, Filter, ChevronDown, Check, X, Zap
+    Search, RotateCcw, Filter, ChevronDown, Check, X, Zap, Lock
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -38,6 +38,22 @@ interface FilterSidebarProps {
     onApply: () => void;
     onReset: () => void;
     horizontal?: boolean; // mobile inline bar mode
+    isCommon?: boolean;   // common user role — restricts some filters
+}
+
+// ─── Locked filter overlay component ────────────────────────────────────────
+function LockedFilter({ children, locked }: { children: React.ReactNode; locked: boolean }) {
+    if (!locked) return <>{children}</>;
+    return (
+        <div className="relative">
+            <div className="pointer-events-none opacity-40">{children}</div>
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg cursor-not-allowed">
+                <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold px-2 py-1 rounded-full">
+                    <Lock className="w-2.5 h-2.5" /> Pro
+                </div>
+            </div>
+        </div>
+    );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -284,7 +300,7 @@ function MultiSelect({
 }
 
 // ─── Main Sidebar ─────────────────────────────────────────────────────────────
-export default function FilterSidebar({ filters, onChange, onApply, onReset, horizontal = false }: FilterSidebarProps) {
+export default function FilterSidebar({ filters, onChange, onApply, onReset, horizontal = false, isCommon = false }: FilterSidebarProps) {
     const [distinctValues, setDistinctValues] = useState<{
         marcas: { name: string, count: number }[],
         modelos: { name: string, count: number }[],
@@ -541,106 +557,125 @@ export default function FilterSidebar({ filters, onChange, onApply, onReset, hor
                         values={filters.modelo}
                         onChange={val => onChange('modelo', val)}
                         placeholder={filters.marca.length === 0 ? 'Escolha a marca primeiro' : loading.modelos ? 'Carregando...' : 'Todos os modelos'}
-                        disabled={filters.marca.length === 0 || loading.modelos}
+                        disabled={filters.marca.length === 0 || loading.modelos || isCommon}
                     />
 
-                    <MultiSelect
-                        label="Tipo"
-                        options={distinctValues.tipos}
-                        values={filters.tipo}
-                        onChange={val => onChange('tipo', val)}
-                        placeholder={loading.tipos ? 'Carregando...' : 'Todos os tipos'}
-                        disabled={loading.tipos}
-                    />
+                    <LockedFilter locked={isCommon}>
+                        <MultiSelect
+                            label="Tipo"
+                            options={distinctValues.tipos}
+                            values={filters.tipo}
+                            onChange={val => onChange('tipo', val)}
+                            placeholder={loading.tipos ? 'Carregando...' : 'Todos os tipos'}
+                            disabled={loading.tipos || isCommon}
+                        />
+                    </LockedFilter>
 
-                    <MultiSelect
-                        label="Tipo de Monta"
-                        options={distinctValues.tiposDeMonta}
-                        values={filters.tipoDeMonta}
-                        onChange={val => onChange('tipoDeMonta', val)}
-                        placeholder={loading.tiposDeMonta ? 'Carregando...' : 'Todos os tipos de monta'}
-                        disabled={loading.tiposDeMonta}
-                    />
+                    <LockedFilter locked={isCommon}>
+                        <MultiSelect
+                            label="Tipo de Monta"
+                            options={distinctValues.tiposDeMonta}
+                            values={filters.tipoDeMonta}
+                            onChange={val => onChange('tipoDeMonta', val)}
+                            placeholder={loading.tiposDeMonta ? 'Carregando...' : 'Todos os tipos de monta'}
+                            disabled={loading.tiposDeMonta || isCommon}
+                        />
+                    </LockedFilter>
                 </div>
 
-                <MultiSelect
-                    label="Estado (UF)"
-                    options={allUFs}
-                    values={filters.location}
-                    onChange={val => onChange('location', val)}
-                    placeholder="Qualquer estado"
-                />
+                <LockedFilter locked={isCommon}>
+                    <MultiSelect
+                        label="Estado (UF)"
+                        options={allUFs}
+                        values={filters.location}
+                        onChange={val => onChange('location', val)}
+                        placeholder="Qualquer estado"
+                        disabled={isCommon}
+                    />
+                </LockedFilter>
 
-                <MultiSelect
-                    label="Cor"
-                    options={distinctValues.cores}
-                    values={filters.cor}
-                    onChange={vals => onChange('cor', vals)}
-                    placeholder={loading.cores ? 'Carregando...' : 'Todas as cores'}
-                    disabled={loading.cores}
-                />
+                <LockedFilter locked={isCommon}>
+                    <MultiSelect
+                        label="Cor"
+                        options={distinctValues.cores}
+                        values={filters.cor}
+                        onChange={vals => onChange('cor', vals)}
+                        placeholder={loading.cores ? 'Carregando...' : 'Todas as cores'}
+                        disabled={loading.cores || isCommon}
+                    />
+                </LockedFilter>
 
-                <MultiSelect
-                    label="Organização"
-                    options={distinctValues.leiloeiros}
-                    values={filters.sourceName}
-                    onChange={vals => onChange('sourceName', vals)}
-                    placeholder={loading.leiloeiros ? 'Carregando...' : 'Todas as organizações'}
-                    disabled={loading.leiloeiros}
-                />
+                <LockedFilter locked={isCommon}>
+                    <MultiSelect
+                        label="Organização"
+                        options={distinctValues.leiloeiros}
+                        values={filters.sourceName}
+                        onChange={vals => onChange('sourceName', vals)}
+                        placeholder={loading.leiloeiros ? 'Carregando...' : 'Todas as organizações'}
+                        disabled={loading.leiloeiros || isCommon}
+                    />
+                </LockedFilter>
             </div>
 
             <div className="border-t border-gray-100" />
 
-            <div>
-                <SectionLabel>Ano</SectionLabel>
-                <div className="grid grid-cols-2 gap-2">
-                    <input
-                        type="number"
-                        placeholder="De"
-                        aria-label="Ano mínimo"
-                        min="1950"
-                        max="2030"
-                        value={filters.anoMin}
-                        onChange={e => onChange('anoMin', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
-                    />
-                    <input
-                        type="number"
-                        placeholder="Até"
-                        aria-label="Ano máximo"
-                        min="1950"
-                        max="2030"
-                        value={filters.anoMax}
-                        onChange={e => onChange('anoMax', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
-                    />
+            <LockedFilter locked={isCommon}>
+                <div>
+                    <SectionLabel>Ano</SectionLabel>
+                    <div className="grid grid-cols-2 gap-2">
+                        <input
+                            type="number"
+                            placeholder="De"
+                            aria-label="Ano mínimo"
+                            min="1950"
+                            max="2030"
+                            value={filters.anoMin}
+                            onChange={e => onChange('anoMin', e.target.value)}
+                            disabled={isCommon}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                        <input
+                            type="number"
+                            placeholder="Até"
+                            aria-label="Ano máximo"
+                            min="1950"
+                            max="2030"
+                            value={filters.anoMax}
+                            onChange={e => onChange('anoMax', e.target.value)}
+                            disabled={isCommon}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                    </div>
                 </div>
-            </div>
+            </LockedFilter>
 
-            <div>
-                <SectionLabel>Preço (R$)</SectionLabel>
-                <div className="grid grid-cols-2 gap-2">
-                    <input
-                        type="number"
-                        placeholder="Mínimo"
-                        aria-label="Preço mínimo"
-                        min="0"
-                        value={filters.precoMin}
-                        onChange={e => onChange('precoMin', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
-                    />
-                    <input
-                        type="number"
-                        placeholder="Máximo"
-                        aria-label="Preço máximo"
-                        min="0"
-                        value={filters.precoMax}
-                        onChange={e => onChange('precoMax', e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all"
-                    />
+            <LockedFilter locked={isCommon}>
+                <div>
+                    <SectionLabel>Preço (R$)</SectionLabel>
+                    <div className="grid grid-cols-2 gap-2">
+                        <input
+                            type="number"
+                            placeholder="Mínimo"
+                            aria-label="Preço mínimo"
+                            min="0"
+                            value={filters.precoMin}
+                            onChange={e => onChange('precoMin', e.target.value)}
+                            disabled={isCommon}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                        <input
+                            type="number"
+                            placeholder="Máximo"
+                            aria-label="Preço máximo"
+                            min="0"
+                            value={filters.precoMax}
+                            onChange={e => onChange('precoMax', e.target.value)}
+                            disabled={isCommon}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:border-emerald-500 focus:outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                    </div>
                 </div>
-            </div>
+            </LockedFilter>
 
             <button
                 onClick={onApply}
